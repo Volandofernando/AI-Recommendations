@@ -1,0 +1,8 @@
+streamlit
+pandas
+numpy
+scikit-learn
+altair
+openpyxl
+pyyaml
+supabase
