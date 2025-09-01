@@ -4,7 +4,7 @@ app:
   theme_color: "#2E86C1"
 
 dataset:
-  path: "data/Dataset.xlsx"
+  path: "https://github.com/Volandofernando/Material-Literature-data-/blob/main/Dataset.xlsx"
   sheet_name: "Sheet1"
 
 features:
