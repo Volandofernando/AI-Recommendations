@@ -1,27 +1,16 @@
 app:
-  title: AI Fabric Recommender
-  subtitle: Dissertation Project — University of West London
-  theme_color: "#1F4E79"
+  title: "AI Fabric Recommender"
+  subtitle: "Dissertation Project — University of West London"
+  theme_color: "#2E86C1"
 
-datasets:
-  literature_url: "https://raw.githubusercontent.com/Volandofernando/Material-Literature-data-/main/Dataset.xlsx"
-  survey_url: "https://raw.githubusercontent.com/Volandofernando/REAL-TIME-Dataset/main/IT%20Innovation%20in%20Fabric%20Industry%20%20(Responses).xlsx"
+dataset:
+  path: "data/Dataset.xlsx"
+  sheet_name: "Sheet1"
 
-# Columns are detected dynamically using these keyword lists (lowercase match)
 features:
-  moisture_regain: ["moisture", "regain"]
-  water_absorption: ["water", "absorption"]
-  drying_time: ["drying", "time"]
-  thermal_conductivity: ["thermal", "conductivity"]
+  - moisture_regain_
+  - water_absorption_g_m2_
+  - drying_time_min_
+  - thermal_conductivity_w_m_k_
 
-# One of your columns must contain at least all these words (lowercase)
-target_keywords: ["comfort", "score"]
-
-# Column that names the fabric/material (best-effort detection)
-fabric_name_keywords: ["fabric", "material", "type"]
-
-model:
-  n_estimators: 300
-  test_size: 0.25
-  random_state: 42
-
+target: comfort_score_l_10_
