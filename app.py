@@ -1,190 +1,142 @@
-import os
-import time
-import numpy as np
-import yaml
-import pandas as pd
-import altair as alt
 import streamlit as st
+import pandas as pd
+import numpy as np
+import altair as alt
+from utils import load_config, load_datasets, detect_features_and_target, train_model, evaluate_model
 
-from utils import (
-    load_config, load_datasets,
-    detect_features_and_target, train_model, evaluate_model
-)
-from db import log_event
-
-# ---------- Config & Theme ----------
+# -------------------------------
+# Load Config
+# -------------------------------
 config = load_config()
 st.set_page_config(page_title=config["app"]["title"], layout="wide")
 
+# -------------------------------
+# Custom Styling
+# -------------------------------
 st.markdown(f"""
 <style>
-    .main {{ background-color: #F9FAFB; }}
-    h1, h2, h3 {{ color: {config['app']['theme_color']}; }}
-    .metric-row {{ display:flex; gap:2rem; flex-wrap:wrap; }}
-    .metric-card {{ padding:1rem; border-radius:1rem; background:#ffffff; box-shadow:0 1px 3px rgba(0,0,0,0.06); }}
+    .main {{ background-color: #FAFAFA; }}
+    h1, h2, h3 {{ color: {config['app']['theme_color']}; font-family: 'Helvetica Neue', sans-serif; }}
+    .intro-box {{
+        padding: 1rem;
+        border-radius: 10px;
+        background-color: #FFFFFF;
+        box-shadow: 0px 2px 8px rgba(0,0,0,0.1);
+    }}
 </style>
 """, unsafe_allow_html=True)
 
 st.title(f"👕 {config['app']['title']}")
-st.caption(config["app"]["subtitle"])
+st.subheader(config["app"]["subtitle"])
 
-# ---------- Load data ----------
-with st.spinner("Loading datasets…"):
-    df = load_datasets(config)
+# -------------------------------
+# Introduction Section
+# -------------------------------
+st.markdown("""
+<div class="intro-box">
+    <h3>Welcome to the Fabric Comfort Recommender 👕</h3>
+    <p>
+    This tool helps you choose the <b>most comfortable fabrics</b> based on:
+    </p>
+    <ul>
+        <li>🌡️ <b>Temperature</b>: Outdoor conditions affect fabric breathability and comfort.</li>
+        <li>💧 <b>Humidity</b>: Impacts sweat absorption and drying time.</li>
+        <li>🧍 <b>Sweat Sensitivity</b>: How much you typically sweat during activity.</li>
+        <li>🏃 <b>Activity Intensity</b>: From casual wear to high-performance sports.</li>
+    </ul>
+    <p>
+    Behind the scenes, this app uses <b>Machine Learning</b> trained on academic literature and real-world survey data to recommend fabrics for comfort, sweat management, and performance.
+    </p>
+</div>
+""", unsafe_allow_html=True)
 
-st.expander("Show detected columns").write(df.columns.tolist())
-
-# Detect features/target/fabric name
-feature_cols, target_col, fabric_col = detect_features_and_target(df, config)
+# -------------------------------
+# Load Data
+# -------------------------------
+df = load_datasets(config)
+feature_cols, target_col = detect_features_and_target(df, config)
 
 if target_col is None or len(feature_cols) < 4:
-    st.error(
-        f"❌ Could not detect the required features/target.\n\n"
-        f"Detected features: {feature_cols}\n"
-        f"Detected target: {target_col}\n\n"
-        f"Please verify your dataset columns or update 'config.yaml'."
-    )
+    st.error("❌ Dataset error: required features/target not found!")
     st.stop()
 
-# Train model
-with st.spinner("Training model…"):
-    model, scaler, X_test, y_test, df_clean = train_model(df, feature_cols, target_col, config)
+model, scaler, X_test, y_test, df_clean = train_model(df, feature_cols, target_col, config)
 
-# ---------- Tabs ----------
-tab1, tab2, tab3, tab4 = st.tabs(
-    ["📌 Recommendation", "📊 Dataset Insights", "🤖 Model Performance", "📝 About Project"]
-)
+# -------------------------------
+# Tabs
+# -------------------------------
+tab1, tab2, tab3, tab4 = st.tabs(["📌 Get Recommendations", "📊 Insights", "🤖 Model Performance", "ℹ️ About"])
 
-# ---------- Tab 1: Recommendation ----------
+# -------------------------------
+# TAB 1: Recommendation
+# -------------------------------
 with tab1:
-    st.sidebar.header("Input Your Conditions")
-    temperature = st.sidebar.slider("🌡️ Temperature (°C)", 15, 40, 30)
-    humidity = st.sidebar.slider("💧 Humidity (%)", 10, 100, 70)
-    sweat_sensitivity = st.sidebar.selectbox("🧍 Sweat Sensitivity", ["Low", "Medium", "High"])
-    activity_intensity = st.sidebar.selectbox("🏃 Activity Intensity", ["Low", "Moderate", "High"])
+    st.sidebar.header("Set Your Conditions")
+
+    temperature = st.sidebar.slider("🌡️ Outdoor Temperature (°C)", 10, 45, 28)
+    humidity = st.sidebar.slider("💧 Humidity (%)", 10, 100, 60)
+    sweat_sensitivity = st.sidebar.radio("🧍 Sweat Sensitivity", ["Low", "Medium", "High"])
+    activity_intensity = st.sidebar.radio("🏃 Activity Intensity", ["Low", "Moderate", "High"])
 
     sweat_map = {"Low": 1, "Medium": 2, "High": 3}
     activity_map = {"Low": 1, "Moderate": 2, "High": 3}
-    sweat_num = sweat_map[sweat_sensitivity]
-    activity_num = activity_map[activity_intensity]
+    sweat_num, activity_num = sweat_map[sweat_sensitivity], activity_map[activity_intensity]
 
-    # Construct feature vector (domain heuristics)
-    user_features = np.array([[
-        sweat_num * 5,                    # moisture_regain
-        800 + humidity * 5,               # water_absorption
-        60 + activity_num * 10,           # drying_time
-        0.04 + (temperature - 25) * 0.001 # thermal_conductivity
-    ]], dtype=float)
+    # User Input Vector
+    user_input = np.array([[sweat_num * 5,
+                            800 + humidity * 5,
+                            60 + activity_num * 10,
+                            0.04 + (temperature - 25) * 0.001]])
+    user_input_scaled = scaler.transform(user_input)
 
-    # Respect the detected column order
-    # (Assumes exactly 4 features matched in config order)
-    if len(feature_cols) != 4:
-        st.warning(f"Detected {len(feature_cols)} features: {feature_cols}. "
-                   "The recommender expects 4; results may be off.")
-    user_scaled = scaler.transform(user_features)
+    predicted_score = model.predict(user_input_scaled)[0]
+    df_clean["predicted_diff"] = abs(df_clean[target_col] - predicted_score)
+    top_matches = df_clean.sort_values(by="predicted_diff").head(3)
 
-    predicted_score = float(model.predict(user_scaled)[0])
-
-    # Find nearest items by comfort proximity
-    df_view = df_clean.copy()
-    df_view["predicted_diff"] = (df_view[target_col] - predicted_score).abs()
-    top_matches = df_view.sort_values("predicted_diff").head(3)
-
-    st.subheader("🔹 Top Fabric Recommendations")
-
+    # Show Recommendations
+    st.markdown("## 🔹 Recommended Fabrics for You")
     cols = st.columns(3)
     for i, (_, row) in enumerate(top_matches.iterrows()):
         with cols[i]:
-            card = st.container(border=True)
-            with card:
-                name = str(row.get(fabric_col, "Unknown")) if fabric_col else "Unknown"
-                st.markdown(f"### 🧵 {name}")
-                st.metric("Comfort Score", round(float(row[target_col]), 2))
-                st.caption(
-                    f"Moisture: {row[feature_cols[0]]} | "
-                    f"Absorption: {row[feature_cols[1]]} | "
-                    f"Drying: {row[feature_cols[2]]} | "
-                    f"Thermal: {row[feature_cols[3]]}"
-                )
+            st.markdown(f"### 🧵 {row.get('fabric_type','Unknown')}")
+            st.metric("Comfort Score", round(row[target_col], 2))
 
     # Chart
-    cdata = top_matches[[target_col]].copy()
-    cdata["fabric_name"] = top_matches[fabric_col] if fabric_col in top_matches.columns else "Unknown"
-    cdata.rename(columns={target_col: "Comfort Score"}, inplace=True)
-    chart = alt.Chart(cdata).mark_bar().encode(
-        x=alt.X("fabric_name:N", title="Fabric"),
-        y=alt.Y("Comfort Score:Q"),
-        tooltip=["fabric_name", "Comfort Score"]
-    ).properties(height=300)
+    chart_data = top_matches[[target_col, "fabric_type"]].rename(columns={target_col: "Comfort Score"})
+    chart = alt.Chart(chart_data).mark_bar(color=config["app"]["theme_color"]).encode(
+        x=alt.X("fabric_type", sort=None),
+        y="Comfort Score"
+    )
     st.altair_chart(chart, use_container_width=True)
 
-    # Allow CSV download of recommendations
-    st.download_button(
-        "Download Top Recommendations (CSV)",
-        data=top_matches.to_csv(index=False).encode("utf-8"),
-        file_name="fabric_recommendations.csv",
-        mime="text/csv"
-    )
-
-    # Log an analytics event (no-op if Supabase not configured)
-    log_event("fabric_events", {
-        "ts": int(time.time()),
-        "temperature": temperature,
-        "humidity": humidity,
-        "sweat_sensitivity": sweat_sensitivity,
-        "activity_intensity": activity_intensity,
-        "predicted_score": predicted_score,
-    })
-
-# ---------- Tab 2: Dataset Insights ----------
+# -------------------------------
+# TAB 2: Dataset Insights
+# -------------------------------
 with tab2:
-    st.markdown("### 📊 Explore Dataset")
-    st.write(f"Detected features: `{feature_cols}`  •  Target: `{target_col}`  •  Fabric name: `{fabric_col or 'N/A'}`")
-    st.dataframe(df_clean.head(20), use_container_width=True)
+    st.markdown("### 📊 Cleaned Dataset Preview")
+    clean_cols = [c for c in df_clean.columns if not any(x in c for x in ["email", "timestamp", "what_", "how_", "satisfied"])]
+    st.dataframe(df_clean[clean_cols].head(10))
 
-    # Simple distributions
-    st.markdown("#### Feature Distributions")
-    for col in feature_cols:
-        try:
-            hist = alt.Chart(df_clean).mark_bar().encode(
-                x=alt.X(f"{col}:Q", bin=True),
-                y="count()"
-            ).properties(height=200, title=col)
-            st.altair_chart(hist, use_container_width=True)
-        except Exception:
-            pass
-
-# ---------- Tab 3: Model Performance ----------
+# -------------------------------
+# TAB 3: Model Performance
+# -------------------------------
 with tab3:
-    st.markdown("### 🤖 Model Performance")
     metrics = evaluate_model(model, X_test, y_test)
-    c1, c2 = st.columns(2)
-    with c1:
-        st.metric("R² Score", round(metrics["r2"], 3))
-    with c2:
-        st.metric("RMSE", round(metrics["rmse"], 3))
+    st.metric("R² Score", metrics["r2"])
+    st.metric("RMSE", metrics["rmse"])
 
-    # Feature importance
-    try:
-        importances = model.feature_importances_
-        feat_df = pd.DataFrame({"Feature": feature_cols, "Importance": importances})
-        feat_chart = alt.Chart(feat_df).mark_bar().encode(
-            x="Feature:N", y="Importance:Q", tooltip=["Feature", "Importance"]
-        ).properties(height=280, title="Feature Importance")
-        st.altair_chart(feat_chart, use_container_width=True)
-    except Exception:
-        st.info("Feature importance not available for this model.")
-
-# ---------- Tab 4: About ----------
+# -------------------------------
+# TAB 4: About
+# -------------------------------
 with tab4:
     st.markdown(f"""
-**{config['app']['title']}**  
-Developed as part of a BSc Dissertation at the **University of West London**.
+    **{config['app']['title']}**  
+    Developed for the **University of West London** as part of a BSc Dissertation.  
 
-- Combines **literature** + **real-time survey** datasets  
-- Uses **Random Forest** to predict comfort score  
-- Professional UI + analytics-ready (optional Supabase)  
-- Exportable recommendations for stakeholders  
+    🚀 Key Features:  
+    - AI-powered comfort prediction for fabrics  
+    - Combines academic + real-world survey data  
+    - Designed for sportswear, performance clothing, and fashion industry use  
 
-📌 Author: *Volando Fernando*
-""")
+    👨‍💻 Author: *Volando Fernando*  
+    """)
