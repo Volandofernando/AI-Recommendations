@@ -21,7 +21,7 @@ def load_config(path="config.yaml"):
 # Load Datasets
 # -------------------------------
 def load_datasets(config):
-    lit_url = config["Dataset"]["https://github.com/Volandofernando/Material-Literature-data-/blob/main/Dataset.xlsx"]
+    lit_url = config["Dataset.xlsx"]["https://github.com/Volandofernando/Material-Literature-data-/blob/main/Dataset.xlsx"]
     survey_url = config["IT Innovation in Fabric Industry (Responses).xlsx"]["https://github.com/Volandofernando/REAL-TIME-Dataset/blob/main/IT%20Innovation%20in%20Fabric%20Industry%20%20(Responses).xlsx"]
 
     df_lit = pd.read_excel(lit_url)
