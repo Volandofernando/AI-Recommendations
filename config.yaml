@@ -3,9 +3,10 @@ app:
   subtitle: "Dissertation Project — University of West London"
   theme_color: "#2E86C1"
 
-dataset:
-  path: "https://github.com/Volandofernando/Material-Literature-data-/blob/main/Dataset.xlsx"
-  sheet_name: "Sheet1"
+datasets:
+  literature_url: "https://raw.githubusercontent.com/Volandofernando/Material-Literature-data-/main/Dataset.xlsx"
+  survey_url: "https://raw.githubusercontent.com/Volandofernando/REAL-TIME-Dataset/main/IT%20Innovation%20in%20Fabric%20Industry%20%20(Responses).xlsx"
+
 
 features:
   - moisture_regain_
