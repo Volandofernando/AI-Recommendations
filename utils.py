@@ -13,7 +13,7 @@ def load_config(path="config.yaml"):
 def load_datasets(config):
     path = config["dataset"]["path"]
     if path.endswith(".xlsx"):
-        df = pd.read_excel(path, sheet_name=config["https://github.com/Volandofernando/Material-Literature-data-/blob/main/Dataset.xlsx"].get("sheet1", 0))
+        df = pd.read_excel(path, sheet_name=config["Dataset"].get("sheet1", 0))
     else:
         df = pd.read_csv(path)
     return df
