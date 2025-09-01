@@ -1,108 +1,52 @@
 import pandas as pd
-import numpy as np
 import yaml
-from typing import List, Tuple, Optional
-from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error, r2_score
+import numpy as np
 
-def load_config(path: str = "config.yaml") -> dict:
-    try:
-        with open(path, "r") as f:
-            return yaml.safe_load(f)
-    except FileNotFoundError:
-        raise FileNotFoundError(f"Config file not found at {path}")
-    except yaml.YAMLError as e:
-        raise ValueError(f"Error parsing YAML: {e}")
+def load_config(path="config.yaml"):
+    with open(path, "r") as f:
+        return yaml.safe_load(f)
 
-def clean_columns(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    df.columns = (
-        df.columns
-        .str.strip()
-        .str.lower()
-        .str.replace(r"[^\w]", "_", regex=True)
-        .str.replace(r"_+", "_", regex=True)
-    )
+def load_datasets(config):
+    path = config["dataset"]["path"]
+    if path.endswith(".xlsx"):
+        df = pd.read_excel(path, sheet_name=config["dataset"].get("sheet_name", 0))
+    else:
+        df = pd.read_csv(path)
     return df
 
-def load_datasets(config: dict) -> pd.DataFrame:
-    try:
-        df_lit = pd.read_excel(config["datasets"]["literature_url"])
-        df_survey = pd.read_excel(config["datasets"]["survey_url"])
-    except Exception as e:
-        raise RuntimeError(f"Error loading datasets: {e}")
+def detect_features_and_target(df, config):
+    feature_cols = config.get("features", [])
+    target_col = config.get("target")
 
-    df = pd.concat([clean_columns(df_lit), clean_columns(df_survey)], ignore_index=True, sort=False)
-    if df.empty:
-        raise ValueError("Combined dataset is empty — check your dataset URLs.")
-    return df
-
-def _find_first(df_cols: List[str], keywords_all: List[str]) -> Optional[str]:
-    """
-    Return first column that contains ALL keywords (lowercase containment match).
-    """
-    for col in df_cols:
-        if all(k in col for k in keywords_all):
-            return col
-    return None
-
-def detect_features_and_target(df: pd.DataFrame, config: dict) -> Tuple[List[str], Optional[str], Optional[str]]:
-    cols = [c.lower() for c in df.columns]
-    features_cfg = config.get("features", {})
-    target_kw = [k.lower() for k in config.get("target_keywords", [])]
-    fabric_kw = [k.lower() for k in config.get("fabric_name_keywords", [])]
-
-    feature_cols: List[str] = []
-    for _, kw_list in features_cfg.items():
-        col = _find_first(cols, [k.lower() for k in kw_list])
-        if col:
-            feature_cols.append(col)
-
-    target_col = _find_first(cols, target_kw) if target_kw else None
-
-    # Best-effort fabric name column
-    fabric_col = None
-    for cand in ("fabric_type", "fabric", "material", "material_type", "type"):
-        if cand in cols:
-            fabric_col = cand
-            break
-    if fabric_col is None and fabric_kw:
-        fabric_col = _find_first(cols, fabric_kw)
-
-    return feature_cols, target_col, fabric_col
-
-def train_model(df: pd.DataFrame, feature_cols: List[str], target_col: str, config: dict):
-    required = feature_cols + [target_col]
-    missing = [c for c in required if c not in df.columns]
+    # Validate presence
+    missing = [col for col in feature_cols + [target_col] if col not in df.columns]
     if missing:
-        raise ValueError(f"Missing columns in dataframe: {missing}\nAvailable: {df.columns.tolist()}")
+        raise ValueError(f"Missing columns in dataset: {missing}. Found: {list(df.columns)}")
 
-    df_clean = df.dropna(subset=required).copy()
-    if df_clean.empty:
-        raise ValueError("No rows left after dropping NaNs for required columns.")
+    return feature_cols, target_col
 
-    X, y = df_clean[feature_cols], df_clean[target_col]
+def train_model(df, feature_cols, target_col, config):
+    df_clean = df.dropna(subset=feature_cols + [target_col]).copy()
+
+    X = df_clean[feature_cols].values
+    y = df_clean[target_col].values
+
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X_scaled, y,
-        test_size=config["model"]["test_size"],
-        random_state=config["model"]["random_state"]
-    )
+    X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
 
-    model = RandomForestRegressor(
-        n_estimators=config["model"]["n_estimators"],
-        random_state=config["model"]["random_state"]
-    )
+    model = LinearRegression()
     model.fit(X_train, y_train)
+
     return model, scaler, X_test, y_test, df_clean
 
-def evaluate_model(model, X_test, y_test) -> dict:
-    preds = model.predict(X_test)
-    return {
-        "r2": float(r2_score(y_test, preds)),
-        "rmse": float(np.sqrt(mean_squared_error(y_test, preds)))
-    }
+def evaluate_model(model, X_test, y_test):
+    y_pred = model.predict(X_test)
+    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+    r2 = r2_score(y_test, y_pred)
+    return {"rmse": round(rmse, 3), "r2": round(r2, 3)}
