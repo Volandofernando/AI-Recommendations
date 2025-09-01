@@ -13,7 +13,7 @@ def load_config(path="config.yaml"):
 def load_datasets(config):
     path = config["dataset"]["path"]
     if path.endswith(".xlsx"):
-        df = pd.read_excel(path, sheet_name=config["dataset"].get("sheet_name", 0))
+        df = pd.read_excel(path, sheet_name=config["Dataset"].get("sheet1", 0))
     else:
         df = pd.read_csv(path)
     return df
