@@ -53,7 +53,12 @@ st.markdown("""
 # -------------------------------
 # Load Data
 # -------------------------------
-df = load_datasets(config)
+try:
+    df = load_datasets(config)
+except Exception as e:
+    st.error(f"❌ Failed to load datasets: {e}")
+    st.stop()
+
 feature_cols, target_col = detect_features_and_target(df, config)
 
 if target_col is None or len(feature_cols) < 4:
