@@ -29,14 +29,15 @@ st.markdown(f"""
         border-radius: 10px;
         box-shadow: 0 2px 6px rgba(0,0,0,0.08);
         text-align: center;
+        margin-bottom: 1rem;
     }}
     .metric-value {{
-        font-size: 1.5rem;
+        font-size: 1.3rem;
         font-weight: 700;
         color: #1F2937;
     }}
     .metric-label {{
-        font-size: 0.9rem;
+        font-size: 0.85rem;
         color: #6B7280;
     }}
 </style>
@@ -90,11 +91,11 @@ tab1, tab2, tab3, tab4 = st.tabs(["📌 Recommender", "📊 Insights", "🤖 Mod
 # TAB 1: Recommendation
 # -------------------------------
 with tab1:
-    with st.sidebar.expander("⚙️ Set Environment Conditions", expanded=True):
-        temperature = st.slider("🌡️ Outdoor Temperature (°C)", 10, 45, 28)
-        humidity = st.slider("💧 Humidity (%)", 10, 100, 60)
-        sweat_sensitivity = st.select_slider("🧍 Sweat Sensitivity", ["Low", "Medium", "High"])
-        activity_intensity = st.select_slider("🏃 Activity Intensity", ["Low", "Moderate", "High"])
+    st.markdown("### ⚙️ Set Environment Conditions")
+    temperature = st.slider("🌡️ Outdoor Temperature (°C)", 10, 45, 28)
+    humidity = st.slider("💧 Humidity (%)", 10, 100, 60)
+    sweat_sensitivity = st.select_slider("🧍 Sweat Sensitivity", ["Low", "Medium", "High"])
+    activity_intensity = st.select_slider("🏃 Activity Intensity", ["Low", "Moderate", "High"])
 
     sweat_map = {"Low": 1, "Medium": 2, "High": 3}
     activity_map = {"Low": 1, "Moderate": 2, "High": 3}
@@ -112,9 +113,13 @@ with tab1:
     top_matches = df_clean.sort_values(by="predicted_diff").head(3)
 
     st.markdown("## 🔹 Recommended Fabrics for Your Conditions")
-    cols = st.columns(3)
+
+    # Use dynamic columns: 1 column if on mobile (narrow), else 2
+    num_cols = 2 if len(top_matches) > 1 else 1
+    cols = st.columns(num_cols)
+
     for i, (_, row) in enumerate(top_matches.iterrows()):
-        with cols[i]:
+        with cols[i % num_cols]:
             st.markdown(f"""
             <div class="metric-card">
                 <h4>🧵 {row.get('fabric_type','Unknown')}</h4>
