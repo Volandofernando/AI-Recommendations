@@ -92,10 +92,32 @@ tab1, tab2, tab3, tab4 = st.tabs(["📌 Recommender", "📊 Insights", "🤖 Mod
 # -------------------------------
 with tab1:
     st.markdown("### ⚙️ Set Environment Conditions")
-    temperature = st.slider("🌡️ Outdoor Temperature (°C)", 10, 45, 28)
-    humidity = st.slider("💧 Humidity (%)", 10, 100, 60)
-    sweat_sensitivity = st.select_slider("🧍 Sweat Sensitivity", ["Low", "Medium", "High"])
-    activity_intensity = st.select_slider("🏃 Activity Intensity", ["Low", "Moderate", "High"])
+
+    mode = st.radio("Choose Mode:", ["Beginner (Easy)", "Advanced (Detailed)"])
+
+    if mode == "Beginner (Easy)":
+        preset = st.selectbox("Quick Presets", ["Summer Running", "Winter Walk", "Gym Workout", "Office Day"])
+
+        if preset == "Summer Running":
+            temperature, humidity, sweat_sensitivity, activity_intensity = 32, 70, "High", "High"
+        elif preset == "Winter Walk":
+            temperature, humidity, sweat_sensitivity, activity_intensity = 10, 50, "Low", "Low"
+        elif preset == "Gym Workout":
+            temperature, humidity, sweat_sensitivity, activity_intensity = 22, 60, "Medium", "Moderate"
+        else:  # Office Day
+            temperature, humidity, sweat_sensitivity, activity_intensity = 24, 45, "Medium", "Low"
+
+    else:  # Advanced mode
+        temperature = st.slider("🌡️ Outdoor Temperature (°C)", 10, 45, 28)
+        humidity_level = st.select_slider(
+            "💧 How humid does it feel?",
+            options=["Dry", "Comfortable", "Humid", "Very Humid"]
+        )
+        humidity_map = {"Dry": 30, "Comfortable": 50, "Humid": 70, "Very Humid": 90}
+        humidity = humidity_map[humidity_level]
+
+        sweat_sensitivity = st.select_slider("🧍 Sweat Sensitivity", ["Low", "Medium", "High"])
+        activity_intensity = st.select_slider("🏃 Activity Intensity", ["Low", "Moderate", "High"])
 
     sweat_map = {"Low": 1, "Medium": 2, "High": 3}
     activity_map = {"Low": 1, "Moderate": 2, "High": 3}
@@ -114,12 +136,9 @@ with tab1:
 
     st.markdown("## 🔹 Recommended Fabrics for Your Conditions")
 
-    # Use dynamic columns: 1 column if on mobile (narrow), else 2
-    num_cols = 2 if len(top_matches) > 1 else 1
-    cols = st.columns(num_cols)
-
+    cols = st.columns(len(top_matches))
     for i, (_, row) in enumerate(top_matches.iterrows()):
-        with cols[i % num_cols]:
+        with cols[i]:
             st.markdown(f"""
             <div class="metric-card">
                 <h4>🧵 {row.get('fabric_type','Unknown')}</h4>
@@ -127,6 +146,11 @@ with tab1:
                 <div class="metric-label">Comfort Score</div>
             </div>
             """, unsafe_allow_html=True)
+
+            # Extra industry metrics (dummy example based on features)
+            st.metric("Breathability", f"{round(row[feature_cols[0]],2)}")
+            st.metric("Sweat Absorption", f"{round(row[feature_cols[1]],2)}")
+            st.metric("Thermal Balance", f"{round(row[feature_cols[2]],2)}")
 
     # Chart
     chart_data = top_matches[[target_col, "fabric_type"]].rename(columns={target_col: "Comfort Score"})
@@ -183,6 +207,7 @@ with tab4:
     - AI-powered comfort prediction for fabrics  
     - Combines lab-tested & survey-based data  
     - Optimized for apparel R&D and sportswear innovation  
+    - Beginner-friendly presets and professional analysis  
 
     👨‍💻 Built by: *Volando Fernando*  
     """)
