@@ -3,7 +3,8 @@ app:
   theme_color: "#2563EB"
 
 data:
-  path: "https://github.com/Volandofernando/REAL-TIME-Dataset/blob/main/IT%20Innovation%20in%20Fabric%20Industry%20%20(Responses).xlsx"   # <-- put your dataset here
+  path: "https://github.com/Volandofernando/REAL-TIME-Dataset/blob/main/IT%20Innovation%20in%20Fabric%20Industry%20%20(Responses).xlsx",
+  "https://github.com/Volandofernando/Material-Literature-data-/blob/main/Dataset.xlsx" # <-- put your dataset here
   target: "comfort_score"
   features:
     - absorption_rate
