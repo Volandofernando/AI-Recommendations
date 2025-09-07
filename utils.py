@@ -1,92 +1,138 @@
-# ================================
-# utils.py – helper functions
-# ================================
-
+import os
 import yaml
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
 
-# -------------------------------
+# =========================================================
 # Load Config
-# -------------------------------
-def load_config(path="config.yaml"):
-    with open(path, "r") as f:
-        return yaml.safe_load(f)
+# =========================================================
+def load_config(path: str = "config.yaml") -> dict:
+    """
+    Load configuration from YAML file.
+    """
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Config file not found at {path}")
+    with open(path, "r", encoding="utf-8") as f:
+        config = yaml.safe_load(f)
+    return config
 
-# -------------------------------
-# Load Datasets
-# -------------------------------
-def load_datasets(config):
-    lit_url = config["datasets"]["literature_url"]
-    survey_url = config["datasets"]["survey_url"]
 
-    df_lit = pd.read_excel(lit_url)
-    df_survey = pd.read_excel(survey_url)
+# =========================================================
+# Load Dataset(s)
+# =========================================================
+def load_datasets(config: dict) -> pd.DataFrame:
+    """
+    Load dataset based on config. Supports CSV and Excel.
+    """
+    data_path = config["data"].get("path")
+    if not data_path or not os.path.exists(data_path):
+        raise FileNotFoundError(f"Dataset not found at {data_path}")
 
-    def clean_columns(df):
-        df.columns = (
-            df.columns.str.strip()
-            .str.lower()
-            .str.replace(r"[^\w]", "_", regex=True)
-        )
-        return df
+    if data_path.endswith(".csv"):
+        df = pd.read_csv(data_path)
+    elif data_path.endswith((".xls", ".xlsx")):
+        df = pd.read_excel(data_path)
+    else:
+        raise ValueError("Unsupported dataset format (use CSV or Excel).")
 
-    df_lit = clean_columns(df_lit)
-    df_survey = clean_columns(df_survey)
+    # Drop duplicates & reset index
+    df = df.drop_duplicates().reset_index(drop=True)
 
-    return pd.concat([df_lit, df_survey], ignore_index=True, sort=False)
+    # Drop rows with missing target (but keep feature NaNs for imputation if needed)
+    target = config["data"].get("target")
+    if target and target in df.columns:
+        df = df.dropna(subset=[target])
 
-# -------------------------------
+    return df
+
+
+# =========================================================
 # Detect Features & Target
-# -------------------------------
-def detect_features_and_target(df, config):
-    feature_keywords = config["features"]
-    target_keywords = config["target_keywords"]
+# =========================================================
+def detect_features_and_target(df: pd.DataFrame, config: dict):
+    """
+    Identify features and target column.
+    Uses config overrides if provided.
+    """
+    target = config["data"].get("target")
+    features = config["data"].get("features")
 
-    def find_column(df_cols, keywords):
-        for col in df_cols:
-            if all(k in col for k in keywords):
-                return col
-        return None
+    if target and target in df.columns:
+        target_col = target
+    else:
+        # Heuristic: pick numeric column with "comfort" in name
+        target_col = None
+        for col in df.columns:
+            if "comfort" in col.lower():
+                target_col = col
+                break
 
-    feature_cols = [find_column(df.columns, kw) for kw in feature_keywords.values()]
-    target_col = find_column(df.columns, target_keywords)
+    if features:
+        feature_cols = [c for c in features if c in df.columns]
+    else:
+        # Heuristic: all numeric except target
+        feature_cols = [
+            c for c in df.select_dtypes(include=[np.number]).columns if c != target_col
+        ]
 
-    feature_cols = [c for c in feature_cols if c is not None]
     return feature_cols, target_col
 
-# -------------------------------
+
+# =========================================================
 # Train Model
-# -------------------------------
+# =========================================================
 def train_model(df, feature_cols, target_col, config):
-    df_clean = df.dropna(subset=feature_cols + [target_col])
-    X, y = df_clean[feature_cols], df_clean[target_col]
+    """
+    Train Random Forest regression model on given dataset.
+    Returns model, scaler, X_test, y_test, cleaned df.
+    """
+    X = df[feature_cols].copy()
+    y = df[target_col].values
 
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
+    # Handle NaNs in features
+    X = X.fillna(X.median())
 
+    # Split
+    test_size = config["model"].get("test_size", 0.2)
+    random_state = config["model"].get("random_state", 42)
     X_train, X_test, y_train, y_test = train_test_split(
-        X_scaled, y, test_size=config["model"]["test_size"], random_state=config["model"]["random_state"]
+        X, y, test_size=test_size, random_state=random_state
     )
 
+    # Scale features
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
+
+    # Model
+    params = config["model"].get("params", {})
     model = RandomForestRegressor(
-        n_estimators=config["model"]["n_estimators"],
-        random_state=config["model"]["random_state"]
+        n_estimators=params.get("n_estimators", 200),
+        max_depth=params.get("max_depth", None),
+        random_state=random_state,
+        n_jobs=-1,
     )
-    model.fit(X_train, y_train)
+    model.fit(X_train_scaled, y_train)
 
-    return model, scaler, X_test, y_test, df_clean
+    # Return
+    df_clean = df[feature_cols + [target_col]].copy()
+    return model, scaler, X_test_scaled, y_test, df_clean
 
-# -------------------------------
+
+# =========================================================
 # Evaluate Model
-# -------------------------------
-def evaluate_model(model, X_test, y_test):
-    preds = model.predict(X_test)
+# =========================================================
+def evaluate_model(model, X_test, y_test) -> dict:
+    """
+    Evaluate regression model with multiple metrics.
+    """
+    y_pred = model.predict(X_test)
     return {
-        "r2": r2_score(y_test, preds),
-        "rmse": float(np.sqrt(mean_squared_error(y_test, preds)))
+        "r2": r2_score(y_test, y_pred),
+        "rmse": mean_squared_error(y_test, y_pred, squared=False),
+        "mae": mean_absolute_error(y_test, y_pred),
     }
