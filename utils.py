@@ -26,28 +26,47 @@ def load_config(path: str = "config.yaml") -> dict:
 # =========================================================
 def load_datasets(config: dict) -> pd.DataFrame:
     """
-    Load dataset based on config. Supports CSV and Excel.
+    Load one or more datasets based on config. Supports CSV and Excel.
+    If multiple datasets are listed, they will be concatenated.
     """
-    data_path = config["data"].get("path")
-    if not data_path or not os.path.exists(data_path):
-        raise FileNotFoundError(f"Dataset not found at {data_path}")
+    paths = config["data"].get("paths")
+    if not paths:
+        # fallback for backward compatibility
+        path = config["data"].get("path")
+        if not path:
+            raise FileNotFoundError("No dataset path(s) defined in config.")
+        paths = [path]
 
-    if data_path.endswith(".csv"):
-        df = pd.read_csv(data_path)
-    elif data_path.endswith((".xls", ".xlsx")):
-        df = pd.read_excel(data_path)
-    else:
-        raise ValueError("Unsupported dataset format (use CSV or Excel).")
+    dfs = []
+    for data_path in paths:
+        # Handle remote GitHub URLs
+        if data_path.startswith("http") and "blob" in data_path:
+            data_path = data_path.replace("blob", "raw")
 
-    # Drop duplicates & reset index
-    df = df.drop_duplicates().reset_index(drop=True)
+        try:
+            if data_path.endswith(".csv"):
+                df = pd.read_csv(data_path)
+            elif data_path.endswith((".xls", ".xlsx")):
+                df = pd.read_excel(data_path)
+            else:
+                raise ValueError(f"Unsupported dataset format: {data_path}")
+        except Exception as e:
+            raise RuntimeError(f"Failed to load dataset from {data_path}: {e}")
 
-    # Drop rows with missing target (but keep feature NaNs for imputation if needed)
-    target = config["data"].get("target")
-    if target and target in df.columns:
-        df = df.dropna(subset=[target])
+        # Drop duplicates & reset index
+        df = df.drop_duplicates().reset_index(drop=True)
 
-    return df
+        # Drop rows with missing target
+        target = config["data"].get("target")
+        if target and target in df.columns:
+            df = df.dropna(subset=[target])
+
+        dfs.append(df)
+
+    # Concatenate all datasets
+    if not dfs:
+        raise ValueError("No valid datasets loaded.")
+    return pd.concat(dfs, ignore_index=True)
 
 
 # =========================================================
