@@ -1,6 +1,7 @@
 """
 utils.py
 Professional-grade utilities for Fabric Comfort Recommender.
+Includes automatic column normalization to align messy Excel headers with config.
 """
 
 import pandas as pd
@@ -18,14 +19,38 @@ def load_config(path="config.yaml"):
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
+# Mapping of messy dataset headers -> clean internal names
+COLUMN_MAP = {
+    "Moisture Absorption (%)": "absorption_rate",
+    "Absorption Rate": "absorption_rate",
+    "Dry Time (sec)": "drying_time",
+    "Drying Time": "drying_time",
+    "Thermal Conductivity (W/mK)": "thermal_conductivity",
+    "Thermal Conductivity": "thermal_conductivity",
+    "Air Flow (mm/s)": "air_permeability",
+    "Air Permeability": "air_permeability",
+    "Fabric GSM": "gsm",
+    "GSM": "gsm",
+    "Price ($)": "price",
+    "Cost": "price",
+    "Eco Index": "sustainability_score",
+    "Sustainability": "sustainability_score",
+    "Comfort Index": "comfort_score",
+    "Comfort Score": "comfort_score",
+}
+
+def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    return df.rename(columns={c: COLUMN_MAP.get(c, c) for c in df.columns})
+
 def load_datasets(paths):
     dfs = []
     for p in paths:
         try:
             if p.endswith((".xls", ".xlsx")):
-                dfs.append(pd.read_excel(p))
+                df = pd.read_excel(p)
             else:
-                dfs.append(pd.read_csv(p))
+                df = pd.read_csv(p)
+            dfs.append(normalize_columns(df))
         except Exception as e:
             print(f"⚠️ Could not load {p}: {e}")
     return pd.concat(dfs, ignore_index=True)
@@ -59,7 +84,7 @@ def train_model(X, y, config):
 # Feature Engineering
 # -------------------------------
 def construct_feature_vector(temperature, humidity, sweat_num, activity_num):
-    return np.array([[
+    return np.array([[ 
         sweat_num * 5,                      # Sweat scaling
         800 + humidity * 5,                 # Absorption
         60 + activity_num * 10,             # Ventilation
@@ -89,21 +114,19 @@ def explain_fabric(top_row, df_all, features):
     explanations = {}
     for f in features:
         val = z[f]
-        if pd.isna(val):
-            explanations[f] = "N/A"
-        else:
-            explanations[f] = f"{val:+.2f}σ"
+        explanations[f] = "N/A" if pd.isna(val) else f"{val:+.2f}σ"
     return explanations
 
 # -------------------------------
 # Definitions for Material Properties
 # -------------------------------
 PROPERTY_DEFINITIONS = {
-    "absorption_rate": "The rate at which a fabric absorbs moisture (mg/m²). Higher values = faster sweat absorption.",
-    "drying_time": "The time fabric takes to dry after absorbing sweat. Lower is better for active wear.",
-    "thermal_conductivity": "Ability of fabric to conduct heat (W/mK). Lower values = better insulation.",
-    "air_permeability": "How easily air passes through fabric (mm/s). Higher = more ventilation & breathability.",
-    "gsm": "Grams per square meter (GSM). Indicates fabric weight/thickness.",
-    "price": "Relative fabric cost index.",
-    "sustainability_score": "Eco-friendliness score, derived from survey/literature data."
+    "absorption_rate": "How quickly fabric absorbs sweat (mg/m²). Higher = faster absorption.",
+    "drying_time": "Time needed for fabric to dry (seconds). Lower = better for active wear.",
+    "thermal_conductivity": "Heat conduction ability (W/mK). Lower = better insulation.",
+    "air_permeability": "Air flow through fabric (mm/s). Higher = more breathable.",
+    "gsm": "Weight per square meter. Higher = thicker/heavier fabric.",
+    "price": "Relative cost of the fabric.",
+    "sustainability_score": "Eco-friendliness index (survey/literature derived).",
+    "comfort_score": "Target label: perceived comfort index (1–10)."
 }
