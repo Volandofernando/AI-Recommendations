@@ -117,16 +117,24 @@ def explain_fabric(top_row, df_all, features):
         explanations[f] = "N/A" if pd.isna(val) else f"{val:+.2f}σ"
     return explanations
 
-# -------------------------------
-# Definitions for Material Properties
-# -------------------------------
+COLUMN_MAP = {
+    # Dataset.xlsx (literature)
+    "Water Absorption (g/m²)": "absorption_rate",
+    "Drying Time (min)": "drying_time",
+    "Thermal Conductivity (W/m·K)": "thermal_conductivity",
+    "Moisture Regain (%)": "moisture_regain",
+    "Comfort Score (1–10)": "comfort_score",
+
+    # Real-Time Survey dataset (mapped but qualitative mostly)
+    "Comfort Score": "comfort_score",
+    "Sustainability Preference": "sustainability_score",
+}
+
 PROPERTY_DEFINITIONS = {
-    "absorption_rate": "How quickly fabric absorbs sweat (mg/m²). Higher = faster absorption.",
-    "drying_time": "Time needed for fabric to dry (seconds). Lower = better for active wear.",
-    "thermal_conductivity": "Heat conduction ability (W/mK). Lower = better insulation.",
-    "air_permeability": "Air flow through fabric (mm/s). Higher = more breathable.",
-    "gsm": "Weight per square meter. Higher = thicker/heavier fabric.",
-    "price": "Relative cost of the fabric.",
-    "sustainability_score": "Eco-friendliness index (survey/literature derived).",
-    "comfort_score": "Target label: perceived comfort index (1–10)."
+    "absorption_rate": "How much sweat the fabric can absorb (g/m²). Higher = better moisture handling.",
+    "drying_time": "Time fabric takes to dry (minutes). Shorter = more comfortable during activity.",
+    "thermal_conductivity": "Heat conduction (W/mK). Lower = keeps warmth, Higher = cooling fabrics.",
+    "moisture_regain": "Percentage of water a fabric regains in standard conditions. Reflects sweat buffering.",
+    "sustainability_score": "Eco-index derived from survey/user feedback. Higher = more sustainable.",
+    "comfort_score": "Target variable: perceived comfort (1–10). Learned from literature + validated by survey.",
 }
