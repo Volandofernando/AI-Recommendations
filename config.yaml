@@ -11,14 +11,11 @@ data:
     - absorption_rate
     - drying_time
     - thermal_conductivity
-    - air_permeability
-    - gsm
-    - price
-    - sustainability_score
+    - moisture_regain
 
 model:
   test_size: 0.2
   random_state: 42
   params:
-    n_estimators: 250
-    max_depth: 12
+    n_estimators: 300
+    max_depth: 15
