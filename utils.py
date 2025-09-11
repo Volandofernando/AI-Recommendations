@@ -1,54 +1,46 @@
-import os
-import yaml
-import numpy as np
 import pandas as pd
+import numpy as np
+import yaml
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error, r2_score
 
-# -------------------
+# -------------------------------
 # Config Loader
-# -------------------
+# -------------------------------
 def load_config(path="config.yaml"):
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
-# -------------------
+# -------------------------------
 # Column Normalization Map
-# -------------------
+# -------------------------------
 COLUMN_MAP = {
     "Moisture Absorption (%)": "absorption_rate",
     "Absorption Rate": "absorption_rate",
     "Dry Time (sec)": "drying_time",
     "Drying Time": "drying_time",
     "Thermal Conductivity (W/mK)": "thermal_conductivity",
+    "Thermal Conductivity": "thermal_conductivity",
+    "Air Flow (mm/s)": "air_permeability",
     "Air Permeability": "air_permeability",
     "Fabric GSM": "gsm",
+    "GSM": "gsm",
     "Price ($)": "price",
+    "Cost": "price",
     "Eco Index": "sustainability_score",
-    "Comfort Score": "comfort_score",
+    "Sustainability": "sustainability_score",
     "Comfort Index": "comfort_score",
-    "Perceived Comfort": "comfort_score",
+    "Comfort Score": "comfort_score",
 }
 
-PROPERTY_DEFS = {
-    "absorption_rate": "Liquid absorption ability (g/m²). Higher = faster sweat uptake.",
-    "drying_time": "Time to dry (min). Lower = better.",
-    "thermal_conductivity": "Heat conduction (W/mK). Lower = warmer, higher = cooler.",
-    "air_permeability": "Airflow through fabric (mm/s). Higher = more breathable.",
-    "gsm": "Grams per square meter (weight).",
-    "price": "Relative price or cost.",
-    "sustainability_score": "Eco index (higher = more sustainable).",
-    "comfort_score": "Target comfort rating (1–10)."
-}
-
-def normalize_columns(df):
+def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df.rename(columns={c: COLUMN_MAP.get(c, c) for c in df.columns})
 
-# -------------------
-# Dataset Loader
-# -------------------
+# -------------------------------
+# Data Loader
+# -------------------------------
 def load_datasets(paths, features, target):
     dfs, errors = [], []
     for p in paths:
@@ -66,81 +58,96 @@ def load_datasets(paths, features, target):
 
     data = pd.concat(dfs, ignore_index=True)
 
-    # Ensure numeric
+    # Ensure all expected cols exist
     for col in features + [target]:
-        if col in data.columns:
-            data[col] = pd.to_numeric(data[col], errors="coerce")
+        if col not in data.columns:
+            data[col] = np.nan
 
-    # Drop missing target
+    # Convert to numeric
+    for col in features + [target]:
+        data[col] = pd.to_numeric(data[col], errors="coerce")
+
+    # Drop rows missing target
     data = data.dropna(subset=[target])
-    # Impute features
+
+    # Fill missing features
     for f in features:
-        if f in data.columns:
-            data[f] = data[f].fillna(data[f].median())
+        data[f] = data[f].fillna(data[f].median())
 
-    return data, {"rows": len(data), "errors": errors}
+    return data
 
-# -------------------
+# -------------------------------
 # Model Training
-# -------------------
-def train_model(X, y, cfg):
-    X = X.fillna(0)
-    y = y.fillna(y.median())
-
+# -------------------------------
+def train_model(X, y, config):
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=cfg["model"]["test_size"], random_state=cfg["model"]["random_state"]
+        X, y,
+        test_size=config["model"]["test_size"],
+        random_state=config["model"]["random_state"]
     )
-
     scaler = StandardScaler()
     X_train_s = scaler.fit_transform(X_train)
     X_test_s = scaler.transform(X_test)
 
-    model = RandomForestRegressor(random_state=cfg["model"]["random_state"], **cfg["model"]["params"])
+    model = RandomForestRegressor(
+        **config["model"]["params"],
+        random_state=config["model"]["random_state"]
+    )
     model.fit(X_train_s, y_train)
 
     y_pred = model.predict(X_test_s)
-    metrics = {"r2": r2_score(y_test, y_pred), "mse": mean_squared_error(y_test, y_pred)}
+    return model, scaler, {
+        "mse": mean_squared_error(y_test, y_pred),
+        "r2": r2_score(y_test, y_pred)
+    }
 
-    return model, scaler, metrics
-
-# -------------------
-# Feature Engineering (User → Model)
-# -------------------
-def construct_feature_vector(temp, humidity, sweat_num, activity_num):
+# -------------------------------
+# Feature Engineering (report spec)
+# -------------------------------
+def construct_feature_vector(temperature, humidity, sweat_num, activity_num):
     return np.array([[ 
-        sweat_num * 5,
-        800 + humidity * 5,
-        60 + activity_num * 10,
-        0.04 + (temp - 25) * 0.001
+        sweat_num * 5,                      # Sweat scaling
+        800 + humidity * 5,                 # Absorption demand
+        60 + activity_num * 10,             # Ventilation
+        0.04 + (temperature - 25) * 0.001   # Conductivity
     ]])
 
-# -------------------
-# Ranking
-# -------------------
-def rank_fabrics(df, target, predicted, sustain_w=0.2):
-    eps = 1e-9
+# -------------------------------
+# Ranking Fabrics
+# -------------------------------
+def rank_fabrics(df, target_col, predicted_score, sustain_w=0.3):
     df = df.copy()
-    df["predicted_diff"] = (df[target] - predicted).abs()
+    eps = 1e-6
+    df["predicted_diff"] = abs(df[target_col] - predicted_score)
     df["inv_prox"] = 1.0 / (df["predicted_diff"] + eps)
-
-    if "sustainability_score" in df.columns:
-        df["sustain_norm"] = (df["sustainability_score"] - df["sustainability_score"].min()) / (
-            df["sustainability_score"].max() - df["sustainability_score"].min() + eps
-        )
-    else:
-        df["sustain_norm"] = 0.5
-
+    df["sustain_norm"] = df["sustainability_score"].rank(pct=True)
     df["rank_score"] = (1 - sustain_w) * df["inv_prox"] + sustain_w * df["sustain_norm"]
-    df["similarity_score"] = 100 * (df["rank_score"] - df["rank_score"].min()) / (
-        df["rank_score"].max() - df["rank_score"].min() + eps
-    )
-    return df.sort_values("similarity_score", ascending=False).reset_index(drop=True)
+    df["similarity_score"] = 100 * df["rank_score"] / df["rank_score"].max()
+    return df.sort_values("similarity_score", ascending=False)
 
-# -------------------
+# -------------------------------
 # Explainability (z-scores)
-# -------------------
-def explain_fabric(row, df, features):
-    means = df[features].mean()
-    stds = df[features].std(ddof=0).replace(0, np.nan)
-    z = (row[features] - means) / stds
-    return {f: f"{z[f]:+.2f}σ" if pd.notna(z[f]) else "N/A" for f in features if f in row}
+# -------------------------------
+def explain_fabric(top_row, df_all, features):
+    means = df_all[features].mean()
+    stds = df_all[features].std(ddof=0).replace(0, np.nan)
+    z = (top_row[features] - means) / stds
+    explanations = {}
+    for f in features:
+        val = z[f]
+        explanations[f] = "N/A" if pd.isna(val) else f"{val:+.2f}σ"
+    return explanations
+
+# -------------------------------
+# Definitions
+# -------------------------------
+PROPERTY_DEFINITIONS = {
+    "absorption_rate": "How quickly fabric absorbs sweat. Higher = better moisture wicking.",
+    "drying_time": "Time required for fabric to dry. Lower = better.",
+    "thermal_conductivity": "Heat conduction ability. Lower = better insulation.",
+    "air_permeability": "Air flow through fabric. Higher = more breathable.",
+    "gsm": "Weight per square meter. Higher = thicker/heavier fabric.",
+    "price": "Relative cost of the fabric.",
+    "sustainability_score": "Eco-friendliness index (survey/literature derived).",
+    "comfort_score": "Target label: perceived comfort index (1–10)."
+}
