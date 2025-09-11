@@ -1,6 +1,6 @@
 """
 utils.py
-Professional-grade utilities for AI-Powered Fabric Comfort Recommender
+Professional utilities for AI-Powered Fabric Comfort Recommender
 """
 
 import pandas as pd
@@ -12,15 +12,13 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error, r2_score
 
 # -------------------------------
-# Config
+# Config Loader
 # -------------------------------
 def load_config(path="config.yaml"):
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
-# -------------------------------
-# Column Normalization
-# -------------------------------
+# Column mapping (messy Excel headers → clean internal names)
 COLUMN_MAP = {
     "Moisture Absorption (%)": "absorption_rate",
     "Absorption Rate": "absorption_rate",
@@ -37,16 +35,16 @@ COLUMN_MAP = {
     "Eco Index": "sustainability_score",
     "Sustainability": "sustainability_score",
     "Comfort Index": "comfort_score",
-    "Comfort Score": "comfort_score"
+    "Comfort Score": "comfort_score",
 }
 
-def normalize_columns(df):
+def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df.rename(columns={c: COLUMN_MAP.get(c, c) for c in df.columns})
 
 # -------------------------------
-# Data Loading
+# Load Datasets
 # -------------------------------
-def load_datasets(paths):
+def load_datasets(paths, features=None, target=None):
     dfs = []
     for p in paths:
         try:
@@ -57,19 +55,18 @@ def load_datasets(paths):
             dfs.append(normalize_columns(df))
         except Exception as e:
             print(f"⚠️ Could not load {p}: {e}")
-    return pd.concat(dfs, ignore_index=True)
 
-# -------------------------------
-# Prepare Features + Target
-# -------------------------------
-def prepare_xy(df, features, target):
-    df = df[features + [target]].copy()
-    for col in features + [target]:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
-    df = df.dropna(subset=features + [target])
-    X = df[features]
-    y = df[target]
-    return X, y
+    data = pd.concat(dfs, ignore_index=True)
+
+    # Clean: ensure numeric + drop NaN in important cols
+    if features and target:
+        cols = features + [target]
+        for c in cols:
+            if c in data.columns:
+                data[c] = pd.to_numeric(data[c], errors="coerce")
+        data = data.dropna(subset=cols)
+
+    return data
 
 # -------------------------------
 # Train Model
@@ -80,6 +77,7 @@ def train_model(X, y, config):
         test_size=config["model"]["test_size"],
         random_state=config["model"]["random_state"]
     )
+
     scaler = StandardScaler()
     X_train_s = scaler.fit_transform(X_train)
     X_test_s = scaler.transform(X_test)
@@ -91,20 +89,21 @@ def train_model(X, y, config):
     model.fit(X_train_s, y_train)
 
     y_pred = model.predict(X_test_s)
-    return model, scaler, {
+    metrics = {
         "mse": mean_squared_error(y_test, y_pred),
         "r2": r2_score(y_test, y_pred)
     }
+    return model, scaler, metrics
 
 # -------------------------------
 # Feature Engineering
 # -------------------------------
 def construct_feature_vector(temperature, humidity, sweat_num, activity_num):
     return np.array([[ 
-        sweat_num * 5,
-        800 + humidity * 5,
-        60 + activity_num * 10,
-        0.04 + (temperature - 25) * 0.001
+        sweat_num * 5,                      # sweat sensitivity
+        800 + humidity * 5,                 # absorption proxy
+        60 + activity_num * 10,             # ventilation proxy
+        0.04 + (temperature - 25) * 0.001   # thermal conductivity proxy
     ]])
 
 # -------------------------------
@@ -112,14 +111,14 @@ def construct_feature_vector(temperature, humidity, sweat_num, activity_num):
 # -------------------------------
 def rank_fabrics(df, target_col, predicted_score, sustain_w=0.3):
     df = df.copy()
-    df = df.dropna(subset=[target_col])
     eps = 1e-6
     df["predicted_diff"] = abs(df[target_col] - predicted_score)
     df["inv_prox"] = 1.0 / (df["predicted_diff"] + eps)
-    if "sustainability_score" not in df.columns:
-        df["sustainability_score"] = 0
-    df["sustain_norm"] = df["sustainability_score"].rank(pct=True)
-    df["rank_score"] = (1 - sustain_w) * df["inv_prox"] + sustain_w * df["sustain_norm"]
+    if "sustainability_score" in df.columns:
+        df["sustain_norm"] = df["sustainability_score"].rank(pct=True)
+        df["rank_score"] = (1 - sustain_w) * df["inv_prox"] + sustain_w * df["sustain_norm"]
+    else:
+        df["rank_score"] = df["inv_prox"]
     df["similarity_score"] = 100 * df["rank_score"] / df["rank_score"].max()
     return df.sort_values("similarity_score", ascending=False)
 
@@ -130,18 +129,22 @@ def explain_fabric(top_row, df_all, features):
     means = df_all[features].mean()
     stds = df_all[features].std(ddof=0).replace(0, np.nan)
     z = (top_row[features] - means) / stds
-    return {f: ("N/A" if pd.isna(z[f]) else f"{z[f]:+.2f}σ") for f in features}
+    explanations = {}
+    for f in features:
+        val = z[f]
+        explanations[f] = "N/A" if pd.isna(val) else f"{val:+.2f}σ"
+    return explanations
 
 # -------------------------------
 # Property Definitions
 # -------------------------------
 PROPERTY_DEFINITIONS = {
-    "absorption_rate": "How quickly fabric absorbs sweat. Higher = better absorption.",
-    "drying_time": "How long fabric takes to dry. Lower = better.",
-    "thermal_conductivity": "Heat transfer ability. Lower = more insulating.",
-    "air_permeability": "Breathability of fabric. Higher = more airflow.",
-    "gsm": "Fabric weight (g/m²). Higher = thicker fabric.",
-    "price": "Relative cost of fabric.",
-    "sustainability_score": "Eco-friendliness score from survey/literature.",
-    "comfort_score": "Target comfort index (1–10)."
+    "absorption_rate": "How quickly fabric absorbs sweat (mg/m²). Higher = faster absorption.",
+    "drying_time": "Time needed for fabric to dry (seconds). Lower = better for active wear.",
+    "thermal_conductivity": "Heat conduction ability (W/mK). Lower = better insulation.",
+    "air_permeability": "Air flow through fabric (mm/s). Higher = more breathable.",
+    "gsm": "Weight per square meter. Higher = thicker/heavier fabric.",
+    "price": "Relative cost of the fabric.",
+    "sustainability_score": "Eco-friendliness index (survey/literature derived).",
+    "comfort_score": "Target label: perceived comfort index (1–10)."
 }
