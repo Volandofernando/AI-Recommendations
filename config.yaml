@@ -4,18 +4,21 @@ app:
 
 data:
   paths:
-    - "https://github.com/Volandofernando/Material-Literature-data-/raw/main/Dataset.xlsx"
     - "https://github.com/Volandofernando/REAL-TIME-Dataset/raw/main/IT%20Innovation%20in%20Fabric%20Industry%20%20(Responses).xlsx"
+    - "https://github.com/Volandofernando/Material-Literature-data-/raw/main/Dataset.xlsx"
   target: "comfort_score"
   features:
     - absorption_rate
     - drying_time
     - thermal_conductivity
-    - moisture_regain
+    - air_permeability
+    - gsm
+    - price
+    - sustainability_score
 
 model:
   test_size: 0.2
   random_state: 42
   params:
-    n_estimators: 300
-    max_depth: 15
+    n_estimators: 250
+    max_depth: 12
