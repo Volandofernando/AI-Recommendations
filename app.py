@@ -1,64 +1,50 @@
 """
 app.py
-Streamlit UI for AI-Powered Fabric Comfort Recommender
+Streamlit app for AI-Powered Fabric Comfort Recommender
 """
 
 import streamlit as st
 from utils import (
-    load_config, load_datasets, prepare_xy, train_model,
+    load_config, load_datasets, train_model,
     construct_feature_vector, rank_fabrics, explain_fabric,
     PROPERTY_DEFINITIONS
 )
 
 # -------------------------------
-# Setup
+# Load Config + Data
 # -------------------------------
 cfg = load_config()
 st.set_page_config(page_title=cfg["app"]["title"], layout="wide")
+st.title("👕 " + cfg["app"]["title"])
 
-st.title("🧵 " + cfg["app"]["title"])
 st.markdown("""
-This system recommends fabrics based on **comfort prediction** and **sustainability**.  
+This system recommends fabrics based on **comfort prediction** and **sustainability weighting**.  
 Each material property is explained, so users understand *why* a fabric was chosen.
 """)
 
-# -------------------------------
-# Load + Train
-# -------------------------------
-data = load_datasets(cfg["data"]["paths"])
+# Load dataset
+data = load_datasets(cfg["data"]["paths"], cfg["data"]["features"], cfg["data"]["target"])
 features, target = cfg["data"]["features"], cfg["data"]["target"]
 
-# ✅ Clean dataset before training
-X, y, cleaned_df = prepare_xy(data, features, target)
+if target not in data.columns:
+    st.error(f"❌ Target column '{target}' not found in dataset!")
+    st.stop()
 
-# ✅ Train only on cleaned dataset
-model, scaler, metrics = train_model(X, y, cfg)
-
+# Train model
+model, scaler, metrics = train_model(data[features], data[target], cfg)
 st.sidebar.header("📊 Model Performance")
 st.sidebar.write(f"MSE: {metrics['mse']:.3f}")
 st.sidebar.write(f"R²: {metrics['r2']:.3f}")
-st.sidebar.write(f"Rows used: {len(X)} / {len(data)}")
 
 # -------------------------------
 # User Inputs
 # -------------------------------
-st.header("Set Conditions")
-col1, col2 = st.columns(2)
-
-with col1:
-    temperature = st.slider("🌡️ Temperature (°C)", 15, 40, 25,
-                             help="Ambient environment temperature.")
-    humidity = st.slider("💧 Humidity (%)", 20, 90, 50,
-                          help="Environmental humidity level.")
-
-with col2:
-    sweat_num = st.selectbox("Sweat Sensitivity", [1, 2, 3],
-                             format_func=lambda x: {1:"Low",2:"Medium",3:"High"}[x])
-    activity_num = st.selectbox("Activity Intensity", [1, 2, 3],
-                                format_func=lambda x: {1:"Light",2:"Moderate",3:"High"}[x])
-
-sustain_w = st.slider("🌱 Sustainability Weight", 0.0, 1.0, 0.3,
-                      help="Weight given to eco-friendly fabrics.")
+st.header("⚙️ Enter User Conditions")
+temperature = st.slider("🌡️ Temperature (°C)", 10, 45, 25)
+humidity = st.slider("💧 Humidity (%)", 20, 95, 50)
+sweat_num = st.selectbox("🧍 Sweat Sensitivity", [1, 2, 3], format_func=lambda x: {1:"Low",2:"Medium",3:"High"}[x])
+activity_num = st.selectbox("🏃 Activity Intensity", [1, 2, 3], format_func=lambda x: {1:"Light",2:"Moderate",3:"High"}[x])
+sustain_w = st.slider("🌱 Sustainability Weight", 0.0, 1.0, 0.3)
 
 # -------------------------------
 # Prediction
@@ -72,27 +58,25 @@ st.metric("Comfort Score", f"{pred_score:.2f}")
 # -------------------------------
 # Ranking
 # -------------------------------
-# ✅ Use cleaned_df instead of raw data
-ranked = rank_fabrics(cleaned_df, target, pred_score, sustain_w)
-
-st.subheader("Top 5 Recommended Fabrics")
+ranked = rank_fabrics(data, target, pred_score, sustain_w)
+st.subheader("🔹 Top Recommended Fabrics")
 st.dataframe(ranked.head(5), use_container_width=True)
 
 # -------------------------------
 # Explainability
 # -------------------------------
-st.subheader("Why This Pick?")
+st.subheader("🔍 Why This Pick?")
 top = ranked.head(1).iloc[0]
-explanations = explain_fabric(top, cleaned_df, features)
+explanations = explain_fabric(top, data, features)
 
 for f, expl in explanations.items():
-    st.write(f"**{f.replace('_',' ').title()}**: {expl} — {PROPERTY_DEFINITIONS.get(f,'')}")
+    st.write(f"**{f.replace('_',' ').title()}**: {expl} ({PROPERTY_DEFINITIONS.get(f,'')})")
 
 # -------------------------------
 # Export
 # -------------------------------
 st.download_button(
-    "📥 Download Top 10 Recommendations",
+    "⬇️ Download Top 10 Recommendations",
     ranked.head(10).to_csv(index=False).encode("utf-8"),
     "fabric_recommendations.csv",
     "text/csv"
