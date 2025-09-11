@@ -1,6 +1,10 @@
 """
 utils.py
-Professional utilities for AI-Powered Fabric Comfort Recommender
+Professional utilities for Fabric Comfort Recommender
+- Cleans messy Excel headers
+- Prepares numeric features
+- Handles missing/NaN data
+- Trains and evaluates ML model
 """
 
 import pandas as pd
@@ -18,7 +22,9 @@ def load_config(path="config.yaml"):
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
-# Column mapping (messy Excel headers → clean internal names)
+# -------------------------------
+# Header Normalization
+# -------------------------------
 COLUMN_MAP = {
     "Moisture Absorption (%)": "absorption_rate",
     "Absorption Rate": "absorption_rate",
@@ -42,7 +48,7 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df.rename(columns={c: COLUMN_MAP.get(c, c) for c in df.columns})
 
 # -------------------------------
-# Load Datasets
+# Load + Clean Data
 # -------------------------------
 def load_datasets(paths, features=None, target=None):
     dfs = []
@@ -58,18 +64,22 @@ def load_datasets(paths, features=None, target=None):
 
     data = pd.concat(dfs, ignore_index=True)
 
-    # Clean: ensure numeric + drop NaN in important cols
+    # Clean numeric features/target
     if features and target:
         cols = features + [target]
         for c in cols:
             if c in data.columns:
                 data[c] = pd.to_numeric(data[c], errors="coerce")
-        data = data.dropna(subset=cols)
+
+        before = len(data)
+        data = data.replace([np.inf, -np.inf], np.nan).dropna(subset=cols)
+        after = len(data)
+        print(f"✅ Cleaned dataset: {before} → {after} rows after dropping NaN/inf")
 
     return data
 
 # -------------------------------
-# Train Model
+# Model Training
 # -------------------------------
 def train_model(X, y, config):
     X_train, X_test, y_train, y_test = train_test_split(
@@ -100,10 +110,10 @@ def train_model(X, y, config):
 # -------------------------------
 def construct_feature_vector(temperature, humidity, sweat_num, activity_num):
     return np.array([[ 
-        sweat_num * 5,                      # sweat sensitivity
-        800 + humidity * 5,                 # absorption proxy
-        60 + activity_num * 10,             # ventilation proxy
-        0.04 + (temperature - 25) * 0.001   # thermal conductivity proxy
+        sweat_num * 5,                      # Sweat scaling
+        800 + humidity * 5,                 # Absorption proxy
+        60 + activity_num * 10,             # Ventilation proxy
+        0.04 + (temperature - 25) * 0.001   # Conductivity proxy
     ]])
 
 # -------------------------------
@@ -114,11 +124,8 @@ def rank_fabrics(df, target_col, predicted_score, sustain_w=0.3):
     eps = 1e-6
     df["predicted_diff"] = abs(df[target_col] - predicted_score)
     df["inv_prox"] = 1.0 / (df["predicted_diff"] + eps)
-    if "sustainability_score" in df.columns:
-        df["sustain_norm"] = df["sustainability_score"].rank(pct=True)
-        df["rank_score"] = (1 - sustain_w) * df["inv_prox"] + sustain_w * df["sustain_norm"]
-    else:
-        df["rank_score"] = df["inv_prox"]
+    df["sustain_norm"] = df["sustainability_score"].rank(pct=True)
+    df["rank_score"] = (1 - sustain_w) * df["inv_prox"] + sustain_w * df["sustain_norm"]
     df["similarity_score"] = 100 * df["rank_score"] / df["rank_score"].max()
     return df.sort_values("similarity_score", ascending=False)
 
@@ -136,7 +143,7 @@ def explain_fabric(top_row, df_all, features):
     return explanations
 
 # -------------------------------
-# Property Definitions
+# Material Definitions
 # -------------------------------
 PROPERTY_DEFINITIONS = {
     "absorption_rate": "How quickly fabric absorbs sweat (mg/m²). Higher = faster absorption.",
