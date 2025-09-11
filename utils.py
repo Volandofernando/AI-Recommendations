@@ -1,7 +1,6 @@
 """
-utils.py
 Professional-grade utilities for Fabric Comfort Recommender.
-Includes automatic column normalization, dataset cleaning, and model training.
+Includes automatic column normalization, numeric cleaning, and explainability.
 """
 
 import pandas as pd
@@ -13,13 +12,15 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error, r2_score
 
 # -------------------------------
-# Config & Data Loading
+# Config Loading
 # -------------------------------
 def load_config(path="config.yaml"):
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
-# Mapping of messy dataset headers -> clean internal names
+# -------------------------------
+# Column Mapping
+# -------------------------------
 COLUMN_MAP = {
     "Moisture Absorption (%)": "absorption_rate",
     "Absorption Rate": "absorption_rate",
@@ -42,7 +43,10 @@ COLUMN_MAP = {
 def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df.rename(columns={c: COLUMN_MAP.get(c, c) for c in df.columns})
 
-def load_datasets(paths, features=None, target=None):
+# -------------------------------
+# Dataset Loading & Cleaning
+# -------------------------------
+def load_datasets(paths, features, target):
     dfs = []
     for p in paths:
         try:
@@ -53,45 +57,31 @@ def load_datasets(paths, features=None, target=None):
             dfs.append(normalize_columns(df))
         except Exception as e:
             print(f"⚠️ Could not load {p}: {e}")
-
     data = pd.concat(dfs, ignore_index=True)
 
-    if features and target:
-        cols = features + [target]
+    # Keep only required columns
+    cols_needed = features + [target]
+    data = data[[c for c in cols_needed if c in data.columns]]
 
-        # Convert all to numeric, coerce errors into NaN
-        for c in cols:
-            if c in data.columns:
-                data[c] = pd.to_numeric(data[c], errors="coerce")
+    # Convert all to numeric safely
+    for c in data.columns:
+        data[c] = pd.to_numeric(data[c], errors="coerce")
 
-        # Replace infinities with NaN
-        data = data.replace([np.inf, -np.inf], np.nan)
+    # Drop rows with missing target or features
+    data = data.dropna(subset=[target] + features)
 
-        # Drop rows missing target
-        data = data.dropna(subset=[target])
-
-        # Fill missing feature values with median
-        for c in features:
-            if c in data.columns:
-                data[c] = data[c].fillna(data[c].median())
-
-        print(f"✅ Clean dataset shape: {data.shape}")
-
-    return data
+    return data.reset_index(drop=True)
 
 # -------------------------------
 # Model Training
 # -------------------------------
 def train_model(X, y, config):
-    # Final safeguard against NaN/inf
-    X = pd.DataFrame(X).replace([np.inf, -np.inf], np.nan).fillna(0)
-    y = pd.Series(y).replace([np.inf, -np.inf], np.nan).fillna(y.median())
-
     X_train, X_test, y_train, y_test = train_test_split(
         X, y,
         test_size=config["model"]["test_size"],
         random_state=config["model"]["random_state"]
     )
+
     scaler = StandardScaler()
     X_train_s = scaler.fit_transform(X_train)
     X_test_s = scaler.transform(X_test)
@@ -113,10 +103,10 @@ def train_model(X, y, config):
 # -------------------------------
 def construct_feature_vector(temperature, humidity, sweat_num, activity_num):
     return np.array([[ 
-        sweat_num * 5,                      # Sweat scaling
-        800 + humidity * 5,                 # Absorption
-        60 + activity_num * 10,             # Ventilation
-        0.04 + (temperature - 25) * 0.001   # Conductivity
+        sweat_num * 5,                      
+        800 + humidity * 5,                 
+        60 + activity_num * 10,             
+        0.04 + (temperature - 25) * 0.001   
     ]])
 
 # -------------------------------
@@ -146,13 +136,13 @@ def explain_fabric(top_row, df_all, features):
     return explanations
 
 # -------------------------------
-# Definitions for Material Properties
+# Material Property Definitions
 # -------------------------------
 PROPERTY_DEFINITIONS = {
-    "absorption_rate": "How quickly fabric absorbs sweat (mg/m²). Higher = faster absorption.",
-    "drying_time": "Time needed for fabric to dry (seconds). Lower = better for active wear.",
-    "thermal_conductivity": "Heat conduction ability (W/mK). Lower = better insulation.",
-    "air_permeability": "Air flow through fabric (mm/s). Higher = more breathable.",
+    "absorption_rate": "How quickly fabric absorbs sweat. Higher = faster absorption.",
+    "drying_time": "Time needed for fabric to dry. Lower = better for active wear.",
+    "thermal_conductivity": "Heat conduction ability. Lower = better insulation.",
+    "air_permeability": "Air flow through fabric. Higher = more breathable.",
     "gsm": "Weight per square meter. Higher = thicker/heavier fabric.",
     "price": "Relative cost of the fabric.",
     "sustainability_score": "Eco-friendliness index (survey/literature derived).",
