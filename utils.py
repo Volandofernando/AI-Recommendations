@@ -1,99 +1,81 @@
-# utils.py
 import pandas as pd
-import yaml
-import os
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import r2_score, mean_squared_error
 import numpy as np
+import yaml
+import joblib
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import mean_squared_error, r2_score
+import os
 
-# ==============================
+# -------------------------------
 # Load Config
-# ==============================
+# -------------------------------
 def load_config(path="config.yaml"):
-    """
-    Load YAML config file
-    """
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"⚠️ Config file not found: {path}")
     with open(path, "r") as f:
         return yaml.safe_load(f)
 
-# ==============================
+# -------------------------------
 # Load Datasets
-# ==============================
+# -------------------------------
 def load_datasets(config):
-    """
-    Load dataset based on config
-    """
-    dataset_path = config["data"]["path"]
-    if not os.path.exists(dataset_path):
-        raise FileNotFoundError(f"⚠️ Dataset not found at {dataset_path}")
+    try:
+        df1 = pd.read_excel(config["data"]["dataset1"])
+        df2 = pd.read_excel(config["data"]["dataset2"])
+        df = pd.concat([df1, df2], ignore_index=True)
+        return df.dropna()
+    except Exception as e:
+        raise Exception(f"Dataset load failed: {e}")
 
-    df = pd.read_excel(dataset_path) if dataset_path.endswith(".xlsx") else pd.read_csv(dataset_path)
-    return df
-
-# ==============================
+# -------------------------------
 # Detect Features & Target
-# ==============================
+# -------------------------------
 def detect_features_and_target(df, config):
-    """
-    Detect feature columns and target column
-    """
-    feature_cols = config["model"].get("features", [])
-    target_col = config["model"].get("target")
+    features = config["ml"]["features"]
+    target = config["ml"]["target"]
+    if not set(features).issubset(df.columns) or target not in df.columns:
+        return [], None
+    return features, target
 
-    if not feature_cols:
-        # fallback: all numeric except last column
-        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-        if len(numeric_cols) > 1:
-            feature_cols, target_col = numeric_cols[:-1], numeric_cols[-1]
-        else:
-            return [], None
-
-    return feature_cols, target_col
-
-# ==============================
+# -------------------------------
 # Train Model
-# ==============================
-def train_model(df, feature_cols, target_col, config):
-    """
-    Train ML model and return fitted model, scaler, and test sets
-    """
-    df_clean = df.dropna(subset=feature_cols + [target_col]).copy()
+# -------------------------------
+def train_model(df, features, target, config):
+    X = df[features].values
+    y = df[target].values
 
-    X = df_clean[feature_cols].values
-    y = df_clean[target_col].values
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
 
-    # Train-test split
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=config["model"].get("test_size", 0.2), random_state=42
+        X_scaled, y, test_size=0.2, random_state=42
     )
 
-    # Scaling
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
-
-    # Model
     model = RandomForestRegressor(
-        n_estimators=config["model"].get("n_estimators", 100),
+        n_estimators=config["ml"]["n_estimators"],
         random_state=42
     )
-    model.fit(X_train_scaled, y_train)
+    model.fit(X_train, y_train)
 
-    return model, scaler, X_test_scaled, y_test, df_clean
+    return model, scaler, X_test, y_test, df
 
-# ==============================
+# -------------------------------
 # Evaluate Model
-# ==============================
+# -------------------------------
 def evaluate_model(model, X_test, y_test):
-    """
-    Evaluate trained model performance
-    """
     preds = model.predict(X_test)
+    rmse = np.sqrt(mean_squared_error(y_test, preds))
     r2 = r2_score(y_test, preds)
-    rmse = mean_squared_error(y_test, preds, squared=False)
+    return {"rmse": round(rmse, 3), "r2": round(r2, 3)}
 
-    return {"r2": round(r2, 3), "rmse": round(rmse, 3)}
+# -------------------------------
+# Save & Load Model (optional for production)
+# -------------------------------
+def save_model(model, scaler, path="models/saved_model.pkl"):
+    os.makedirs("models", exist_ok=True)
+    joblib.dump({"model": model, "scaler": scaler}, path)
+
+def load_model(path="models/saved_model.pkl"):
+    if os.path.exists(path):
+        return joblib.load(path)
+    return None
