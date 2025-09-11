@@ -1,194 +1,188 @@
-# app.py
 import streamlit as st
 import pandas as pd
 import numpy as np
 import altair as alt
-from utils import (
-    load_config,
-    load_datasets,
-    detect_features_and_target,
-    train_model,
-    evaluate_model,
-)
+from utils import load_config, load_datasets, detect_features_and_target, train_model, evaluate_model
 
-# ===============================
-# Page / Config
-# ===============================
+# -------------------------------
+# Load Config
+# -------------------------------
 config = load_config()
-APP_TITLE = config["app"]["title"]
-THEME = config["app"].get("theme_color", "#2563EB")
+st.set_page_config(page_title=config["app"]["title"], layout="wide")
 
-st.set_page_config(page_title=APP_TITLE, page_icon="👕", layout="wide")
-
-# ===============================
-# Global Styles
-# ===============================
-st.markdown(
-    f"""
+# -------------------------------
+# Custom Styling
+# -------------------------------
+st.markdown(f"""
 <style>
-:root {{
-    --brand: {THEME};
-    --text: #111827;
-    --muted: #6B7280;
-    --bg: #F8FAFC;
-    --card: #FFFFFF;
-    --shadow: 0 6px 24px rgba(0,0,0,0.06);
-    --radius: 16px;
-}}
-.main {{ background: var(--bg); }}
-.metric-card {{
-    background: var(--card); padding: 14px; border-radius: var(--radius);
-    box-shadow: var(--shadow); border: 1px solid #EEF2F7;
-    margin-bottom: 12px;
-}}
-.metric-value {{ font-size: 1.2rem; font-weight: 800; color: var(--text); }}
-.metric-label {{ font-size: .82rem; color: var(--muted); }}
+    .main {{ background-color: #FAFAFA; }}
+    h1, h2, h3 {{ color: {config['app']['theme_color']}; font-family: 'Helvetica Neue', sans-serif; }}
+    .intro-box {{
+        padding: 1.2rem;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #FFFFFF 0%, #F9FAFB 100%);
+        box-shadow: 0px 4px 12px rgba(0,0,0,0.06);
+    }}
+    .metric-card {{
+        background: #FFFFFF;
+        padding: 1rem;
+        border-radius: 10px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        text-align: center;
+        margin-bottom: 1rem;
+    }}
+    .metric-value {{
+        font-size: 1.3rem;
+        font-weight: 700;
+        color: #1F2937;
+    }}
+    .metric-label {{
+        font-size: 0.85rem;
+        color: #6B7280;
+    }}
 </style>
-""",
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True)
 
-# ===============================
-# Header
-# ===============================
-st.title(f"👕 {APP_TITLE}")
-st.caption("AI-Powered Fabric Comfort & Performance Recommender")
+# -------------------------------
+# Title + Branding
+# -------------------------------
+st.title(f"👕 {config['app']['title']}")
+st.subheader("Comfort & Performance Insights for Apparel Industry")
 
-# ===============================
-# Load Data & Train
-# ===============================
-@st.cache_data(show_spinner=False)
-def _load_df(_config):
-    return load_datasets(_config)
+# -------------------------------
+# Intro Section
+# -------------------------------
+st.markdown("""
+<div class="intro-box">
+    <h3>AI-Powered Fabric Comfort Recommender</h3>
+    <p>
+    Trusted by <b>textile R&D</b>, <b>apparel design</b>, and <b>sportswear innovation teams</b>.  
+    Powered by <b>machine learning</b> trained on fabric properties and real-world comfort data.
+    </p>
+    <p>
+    Adjust your conditions and instantly see <b>top fabric recommendations</b> optimized for comfort, sweat management, and thermophysiological performance.
+    </p>
+</div>
+""", unsafe_allow_html=True)
 
-
+# -------------------------------
+# Load Data & Train Model
+# -------------------------------
 try:
-    df = _load_df(config)
+    df = load_datasets(config)
 except Exception as e:
     st.error(f"❌ Failed to load datasets: {e}")
     st.stop()
 
 feature_cols, target_col = detect_features_and_target(df, config)
+
 if target_col is None or len(feature_cols) < 4:
     st.error("❌ Dataset error: required features/target not found!")
     st.stop()
 
+model, scaler, X_test, y_test, df_clean = train_model(df, feature_cols, target_col, config)
 
-@st.cache_resource(show_spinner=True)
-def _train(_df, _feature_cols, _target_col, _config):
-    return train_model(_df, _feature_cols, _target_col, _config)
-
-
-model, scaler, X_test, y_test, df_clean = _train(df, feature_cols, target_col, config)
-
-# ===============================
+# -------------------------------
 # Tabs
-# ===============================
-tab1, tab2, tab3, tab4 = st.tabs(
-    ["📌 Recommender", "📊 Insights", "🤖 Model Performance", "🧾 About"]
-)
+# -------------------------------
+tab1, tab2, tab3, tab4 = st.tabs(["📌 Recommender", "📊 Insights", "🤖 Model Performance", "ℹ️ About"])
 
-# =========================================================
-# TAB 1 – Recommender
-# =========================================================
+# -------------------------------
+# TAB 1: Recommendation
+# -------------------------------
 with tab1:
-    st.subheader("⚙️ Set Conditions")
+    st.markdown("### ⚙️ Set Environment Conditions")
+    temperature = st.slider("🌡️ Outdoor Temperature (°C)", 10, 45, 28)
+    humidity = st.slider("💧 Humidity (%)", 10, 100, 60)
+    sweat_sensitivity = st.select_slider("🧍 Sweat Sensitivity", ["Low", "Medium", "High"])
+    activity_intensity = st.select_slider("🏃 Activity Intensity", ["Low", "Moderate", "High"])
 
-    colA, colB = st.columns([1, 1])
-    with colA:
-        temperature = st.slider("🌡️ Temperature (°C)", 0, 50, 28)
-        humidity = st.slider("💧 Humidity (%)", 10, 100, 70)
-        sweat_sensitivity = st.selectbox("🧍 Sweat Sensitivity", ["Low", "Medium", "High"])
-        activity_intensity = st.selectbox("🏃 Activity Intensity", ["Low", "Moderate", "High"])
-
-    with colB:
-        top_k = st.slider("How many recommendations?", 3, 10, 5)
-
-    # Encode input
     sweat_map = {"Low": 1, "Medium": 2, "High": 3}
     activity_map = {"Low": 1, "Moderate": 2, "High": 3}
     sweat_num, activity_num = sweat_map[sweat_sensitivity], activity_map[activity_intensity]
 
-    user_features = np.array(
-        [[
-            sweat_num * 5,
-            800 + humidity * 5,
-            60 + activity_num * 10,
-            0.04 + (temperature - 25) * 0.001
-        ]]
-    )
-    user_scaled = scaler.transform(user_features)
-    predicted_score = float(model.predict(user_scaled)[0])
+    # User Input Vector
+    user_input = np.array([[sweat_num * 5,
+                            800 + humidity * 5,
+                            60 + activity_num * 10,
+                            0.04 + (temperature - 25) * 0.001]])
+    user_input_scaled = scaler.transform(user_input)
 
-    # Rank fabrics
-    df_clean["predicted_diff"] = (df_clean[target_col] - predicted_score).abs()
-    ranked = df_clean.sort_values("predicted_diff").head(top_k).copy()
+    predicted_score = model.predict(user_input_scaled)[0]
+    df_clean["predicted_diff"] = abs(df_clean[target_col] - predicted_score)
+    top_matches = df_clean.sort_values(by="predicted_diff").head(3)
 
-    # Similarity %
-    eps = 1e-9
-    inv_prox = 1.0 / (ranked["predicted_diff"] + eps)
-    ranked["similarity"] = (
-        (inv_prox - inv_prox.min()) / (inv_prox.max() - inv_prox.min() + eps) * 100.0
-    ).round(1)
+    st.markdown("## 🔹 Recommended Fabrics for Your Conditions")
 
-    # UI – Recommendations
-    st.markdown("### 🔹 Recommended Fabrics")
-    cols = st.columns(min(3, len(ranked)))
-    for i, (_, row) in enumerate(ranked.iterrows()):
-        with cols[i % 3]:
-            st.markdown(
-                f"""
-                <div class="metric-card">
-                    <div class="metric-value">🧵 {row.get('fabric_type','Unknown')}</div>
-                    <div class="metric-label">Similarity {row['similarity']}%</div>
-                    <div class="metric-label">Comfort Score {row[target_col]:.2f}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+    # Use dynamic columns: 1 column if on mobile (narrow), else 2
+    num_cols = 2 if len(top_matches) > 1 else 1
+    cols = st.columns(num_cols)
 
-    # Quick chart
-    chart = (
-        alt.Chart(ranked.reset_index(drop=True))
-        .mark_circle(size=120)
-        .encode(
-            x=alt.X("similarity:Q", title="Similarity (%)"),
-            y=alt.Y(f"{target_col}:Q", title="Comfort Score"),
-            tooltip=["fabric_type", "similarity", target_col],
-        )
+    for i, (_, row) in enumerate(top_matches.iterrows()):
+        with cols[i % num_cols]:
+            st.markdown(f"""
+            <div class="metric-card">
+                <h4>🧵 {row.get('fabric_type','Unknown')}</h4>
+                <div class="metric-value">{round(row[target_col], 2)}</div>
+                <div class="metric-label">Comfort Score</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # Chart
+    chart_data = top_matches[[target_col, "fabric_type"]].rename(columns={target_col: "Comfort Score"})
+    chart = alt.Chart(chart_data).mark_bar(color=config["app"]["theme_color"]).encode(
+        x=alt.X("fabric_type", sort=None),
+        y="Comfort Score"
     )
     st.altair_chart(chart, use_container_width=True)
 
-# =========================================================
-# TAB 2 – Insights
-# =========================================================
+    st.caption("Recommendations are based on proximity to your input conditions in comfort score space.")
+
+# -------------------------------
+# TAB 2: Dataset Insights
+# -------------------------------
 with tab2:
-    st.subheader("📊 Dataset Insights")
-    st.dataframe(df_clean.head(12), use_container_width=True)
-    st.markdown("**Summary Statistics**")
-    st.dataframe(df_clean.describe(include="all").T, use_container_width=True)
+    st.markdown("### 📊 Dataset Overview")
+    st.dataframe(df_clean.head(10))
+    st.write("#### Summary Statistics")
+    st.write(df_clean.describe())
 
-# =========================================================
-# TAB 3 – Model Performance
-# =========================================================
-with tab3:
-    st.subheader("🤖 Model Performance")
-    metrics = evaluate_model(model, X_test, y_test)
-    c1, c2 = st.columns(2)
-    c1.metric("R² Score", f"{metrics['r2']:.3f}")
-    c2.metric("RMSE", f"{metrics['rmse']:.3f}")
-
-# =========================================================
-# TAB 4 – About
-# =========================================================
-with tab4:
-    st.subheader("🧾 About This Project")
-    st.markdown(
-        f"""
-        - **Project**: {APP_TITLE}  
-        - **Goal**: AI-assisted fabric comfort & performance recommendation  
-        - **Tech**: Streamlit, Pandas, Altair, scikit-learn  
-        - **Pipeline**: Climate/activity input → ML model predicts comfort → ranked recommendations  
-        - **Author**: Volando Fernando (BSc Dissertation, University of West London)  
-        """
+    st.write("#### Correlation Heatmap")
+    corr = df_clean[feature_cols + [target_col]].corr().reset_index().melt("index")
+    heatmap = alt.Chart(corr).mark_rect().encode(
+        x="index:O", y="variable:O", color="value:Q"
     )
+    st.altair_chart(heatmap, use_container_width=True)
+
+# -------------------------------
+# TAB 3: Model Performance
+# -------------------------------
+with tab3:
+    metrics = evaluate_model(model, X_test, y_test)
+    st.metric("R² Score", metrics["r2"])
+    st.metric("RMSE", metrics["rmse"])
+
+    st.write("#### Feature Importances")
+    importances = model.feature_importances_
+    feat_df = pd.DataFrame({"Feature": feature_cols, "Importance": importances})
+    feat_chart = alt.Chart(feat_df).mark_bar(color=config["app"]["theme_color"]).encode(
+        x="Feature",
+        y="Importance"
+    )
+    st.altair_chart(feat_chart, use_container_width=True)
+
+# -------------------------------
+# TAB 4: About
+# -------------------------------
+with tab4:
+    st.markdown(f"""
+    **{config['app']['title']}**  
+    A professional AI system for **fabric comfort and performance recommendation**.  
+
+    🚀 Key Features:  
+    - AI-powered comfort prediction for fabrics  
+    - Combines lab-tested & survey-based data  
+    - Optimized for apparel R&D and sportswear innovation  
+
+    👨‍💻 Built by: *Volando Fernando*  
+    """)
