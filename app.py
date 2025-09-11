@@ -27,7 +27,11 @@ Each material property is explained, so users understand *why* a fabric was chos
 # -------------------------------
 data = load_datasets(cfg["data"]["paths"])
 features, target = cfg["data"]["features"], cfg["data"]["target"]
+
+# ✅ Clean dataset before training
 X, y, cleaned_df = prepare_xy(data, features, target)
+
+# ✅ Train only on cleaned dataset
 model, scaler, metrics = train_model(X, y, cfg)
 
 st.sidebar.header("📊 Model Performance")
@@ -40,13 +44,21 @@ st.sidebar.write(f"Rows used: {len(X)} / {len(data)}")
 # -------------------------------
 st.header("Set Conditions")
 col1, col2 = st.columns(2)
+
 with col1:
-    temperature = st.slider("🌡️ Temperature (°C)", 15, 40, 25)
-    humidity = st.slider("💧 Humidity (%)", 20, 90, 50)
+    temperature = st.slider("🌡️ Temperature (°C)", 15, 40, 25,
+                             help="Ambient environment temperature.")
+    humidity = st.slider("💧 Humidity (%)", 20, 90, 50,
+                          help="Environmental humidity level.")
+
 with col2:
-    sweat_num = st.selectbox("Sweat Sensitivity", [1, 2, 3], format_func=lambda x: {1:"Low",2:"Medium",3:"High"}[x])
-    activity_num = st.selectbox("Activity Intensity", [1, 2, 3], format_func=lambda x: {1:"Light",2:"Moderate",3:"High"}[x])
-sustain_w = st.slider("🌱 Sustainability Weight", 0.0, 1.0, 0.3)
+    sweat_num = st.selectbox("Sweat Sensitivity", [1, 2, 3],
+                             format_func=lambda x: {1:"Low",2:"Medium",3:"High"}[x])
+    activity_num = st.selectbox("Activity Intensity", [1, 2, 3],
+                                format_func=lambda x: {1:"Light",2:"Moderate",3:"High"}[x])
+
+sustain_w = st.slider("🌱 Sustainability Weight", 0.0, 1.0, 0.3,
+                      help="Weight given to eco-friendly fabrics.")
 
 # -------------------------------
 # Prediction
@@ -60,6 +72,7 @@ st.metric("Comfort Score", f"{pred_score:.2f}")
 # -------------------------------
 # Ranking
 # -------------------------------
+# ✅ Use cleaned_df instead of raw data
 ranked = rank_fabrics(cleaned_df, target, pred_score, sustain_w)
 
 st.subheader("Top 5 Recommended Fabrics")
