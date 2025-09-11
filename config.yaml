@@ -4,8 +4,8 @@ app:
 
 data:
   paths:
-    - "Dataset.xlsx"
-    - "IT Innovation in Fabric Industry  (Responses).xlsx"
+    - "https://github.com/Volandofernando/Material-Literature-data-/raw/main/Dataset.xlsx"
+    - "https://github.com/Volandofernando/REAL-TIME-Dataset/raw/main/IT%20Innovation%20in%20Fabric%20Industry%20%20(Responses).xlsx"
   target: "comfort_score"
   features:
     - absorption_rate
