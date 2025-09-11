@@ -1,7 +1,6 @@
 """
 utils.py
-Professional-grade utilities for Fabric Comfort Recommender.
-Includes automatic column normalization to align messy Excel headers with config.
+Professional-grade utilities for AI-Powered Fabric Comfort Recommender
 """
 
 import pandas as pd
@@ -13,13 +12,15 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error, r2_score
 
 # -------------------------------
-# Config & Data Loading
+# Config
 # -------------------------------
 def load_config(path="config.yaml"):
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
-# Mapping of messy dataset headers -> clean internal names
+# -------------------------------
+# Column Normalization
+# -------------------------------
 COLUMN_MAP = {
     "Moisture Absorption (%)": "absorption_rate",
     "Absorption Rate": "absorption_rate",
@@ -36,12 +37,15 @@ COLUMN_MAP = {
     "Eco Index": "sustainability_score",
     "Sustainability": "sustainability_score",
     "Comfort Index": "comfort_score",
-    "Comfort Score": "comfort_score",
+    "Comfort Score": "comfort_score"
 }
 
-def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+def normalize_columns(df):
     return df.rename(columns={c: COLUMN_MAP.get(c, c) for c in df.columns})
 
+# -------------------------------
+# Data Loading
+# -------------------------------
 def load_datasets(paths):
     dfs = []
     for p in paths:
@@ -56,7 +60,19 @@ def load_datasets(paths):
     return pd.concat(dfs, ignore_index=True)
 
 # -------------------------------
-# Model Training
+# Prepare Features + Target
+# -------------------------------
+def prepare_xy(df, features, target):
+    df = df[features + [target]].copy()
+    for col in features + [target]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    df = df.dropna(subset=features + [target])
+    X = df[features]
+    y = df[target]
+    return X, y
+
+# -------------------------------
+# Train Model
 # -------------------------------
 def train_model(X, y, config):
     X_train, X_test, y_train, y_test = train_test_split(
@@ -85,10 +101,10 @@ def train_model(X, y, config):
 # -------------------------------
 def construct_feature_vector(temperature, humidity, sweat_num, activity_num):
     return np.array([[ 
-        sweat_num * 5,                      # Sweat scaling
-        800 + humidity * 5,                 # Absorption
-        60 + activity_num * 10,             # Ventilation
-        0.04 + (temperature - 25) * 0.001   # Conductivity
+        sweat_num * 5,
+        800 + humidity * 5,
+        60 + activity_num * 10,
+        0.04 + (temperature - 25) * 0.001
     ]])
 
 # -------------------------------
@@ -96,9 +112,12 @@ def construct_feature_vector(temperature, humidity, sweat_num, activity_num):
 # -------------------------------
 def rank_fabrics(df, target_col, predicted_score, sustain_w=0.3):
     df = df.copy()
+    df = df.dropna(subset=[target_col])
     eps = 1e-6
     df["predicted_diff"] = abs(df[target_col] - predicted_score)
     df["inv_prox"] = 1.0 / (df["predicted_diff"] + eps)
+    if "sustainability_score" not in df.columns:
+        df["sustainability_score"] = 0
     df["sustain_norm"] = df["sustainability_score"].rank(pct=True)
     df["rank_score"] = (1 - sustain_w) * df["inv_prox"] + sustain_w * df["sustain_norm"]
     df["similarity_score"] = 100 * df["rank_score"] / df["rank_score"].max()
@@ -111,30 +130,18 @@ def explain_fabric(top_row, df_all, features):
     means = df_all[features].mean()
     stds = df_all[features].std(ddof=0).replace(0, np.nan)
     z = (top_row[features] - means) / stds
-    explanations = {}
-    for f in features:
-        val = z[f]
-        explanations[f] = "N/A" if pd.isna(val) else f"{val:+.2f}σ"
-    return explanations
+    return {f: ("N/A" if pd.isna(z[f]) else f"{z[f]:+.2f}σ") for f in features}
 
-COLUMN_MAP = {
-    # Dataset.xlsx (literature)
-    "Water Absorption (g/m²)": "absorption_rate",
-    "Drying Time (min)": "drying_time",
-    "Thermal Conductivity (W/m·K)": "thermal_conductivity",
-    "Moisture Regain (%)": "moisture_regain",
-    "Comfort Score (1–10)": "comfort_score",
-
-    # Real-Time Survey dataset (mapped but qualitative mostly)
-    "Comfort Score": "comfort_score",
-    "Sustainability Preference": "sustainability_score",
-}
-
+# -------------------------------
+# Property Definitions
+# -------------------------------
 PROPERTY_DEFINITIONS = {
-    "absorption_rate": "How much sweat the fabric can absorb (g/m²). Higher = better moisture handling.",
-    "drying_time": "Time fabric takes to dry (minutes). Shorter = more comfortable during activity.",
-    "thermal_conductivity": "Heat conduction (W/mK). Lower = keeps warmth, Higher = cooling fabrics.",
-    "moisture_regain": "Percentage of water a fabric regains in standard conditions. Reflects sweat buffering.",
-    "sustainability_score": "Eco-index derived from survey/user feedback. Higher = more sustainable.",
-    "comfort_score": "Target variable: perceived comfort (1–10). Learned from literature + validated by survey.",
+    "absorption_rate": "How quickly fabric absorbs sweat. Higher = better absorption.",
+    "drying_time": "How long fabric takes to dry. Lower = better.",
+    "thermal_conductivity": "Heat transfer ability. Lower = more insulating.",
+    "air_permeability": "Breathability of fabric. Higher = more airflow.",
+    "gsm": "Fabric weight (g/m²). Higher = thicker fabric.",
+    "price": "Relative cost of fabric.",
+    "sustainability_score": "Eco-friendliness score from survey/literature.",
+    "comfort_score": "Target comfort index (1–10)."
 }
