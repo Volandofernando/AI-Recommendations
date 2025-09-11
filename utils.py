@@ -14,7 +14,7 @@ def load_config(path="config.yaml"):
         return yaml.safe_load(f)
 
 # -------------------------------
-# Column Normalization Map
+# Column Normalization
 # -------------------------------
 COLUMN_MAP = {
     "Moisture Absorption (%)": "absorption_rate",
@@ -42,7 +42,7 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
 # Data Loader
 # -------------------------------
 def load_datasets(paths, features, target):
-    dfs, errors = [], []
+    dfs = []
     for p in paths:
         try:
             if p.endswith((".xls", ".xlsx")):
@@ -51,14 +51,14 @@ def load_datasets(paths, features, target):
                 df = pd.read_csv(p)
             dfs.append(normalize_columns(df))
         except Exception as e:
-            errors.append({p: str(e)})
+            print(f"⚠️ Could not load {p}: {e}")
 
     if not dfs:
-        raise RuntimeError("No datasets could be loaded.")
+        raise RuntimeError("❌ No datasets loaded.")
 
     data = pd.concat(dfs, ignore_index=True)
 
-    # Ensure all expected cols exist
+    # Guarantee required columns exist
     for col in features + [target]:
         if col not in data.columns:
             data[col] = np.nan
@@ -67,17 +67,17 @@ def load_datasets(paths, features, target):
     for col in features + [target]:
         data[col] = pd.to_numeric(data[col], errors="coerce")
 
-    # Drop rows missing target
+    # Drop rows without target
     data = data.dropna(subset=[target])
 
-    # Fill missing features
+    # Fill feature NaNs
     for f in features:
         data[f] = data[f].fillna(data[f].median())
 
     return data
 
 # -------------------------------
-# Model Training
+# Train Model
 # -------------------------------
 def train_model(X, y, config):
     X_train, X_test, y_train, y_test = train_test_split(
@@ -102,13 +102,13 @@ def train_model(X, y, config):
     }
 
 # -------------------------------
-# Feature Engineering (report spec)
+# Feature Engineering
 # -------------------------------
 def construct_feature_vector(temperature, humidity, sweat_num, activity_num):
     return np.array([[ 
         sweat_num * 5,                      # Sweat scaling
         800 + humidity * 5,                 # Absorption demand
-        60 + activity_num * 10,             # Ventilation
+        60 + activity_num * 10,             # Ventilation demand
         0.04 + (temperature - 25) * 0.001   # Conductivity
     ]])
 
@@ -126,17 +126,13 @@ def rank_fabrics(df, target_col, predicted_score, sustain_w=0.3):
     return df.sort_values("similarity_score", ascending=False)
 
 # -------------------------------
-# Explainability (z-scores)
+# Explainability
 # -------------------------------
 def explain_fabric(top_row, df_all, features):
     means = df_all[features].mean()
     stds = df_all[features].std(ddof=0).replace(0, np.nan)
     z = (top_row[features] - means) / stds
-    explanations = {}
-    for f in features:
-        val = z[f]
-        explanations[f] = "N/A" if pd.isna(val) else f"{val:+.2f}σ"
-    return explanations
+    return {f: (f"{z[f]:+.2f}σ" if not pd.isna(z[f]) else "N/A") for f in features}
 
 # -------------------------------
 # Definitions
