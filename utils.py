@@ -7,16 +7,36 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import r2_score, mean_squared_error
 import numpy as np
 
+# -------------------------------
+# Config Loader
+# -------------------------------
 def load_config(path="config.yaml"):
     with open(path, "r") as f:
         return yaml.safe_load(f)
 
+# -------------------------------
+# Dataset Loader
+# -------------------------------
 def load_datasets(cfg):
-    material = pd.read_excel(cfg["datasets"]["material_data"])
-    survey = pd.read_excel(cfg["datasets"]["survey_data"])
-    df = pd.concat([material, survey], axis=0, ignore_index=True)
-    return df.dropna()
+    try:
+        material = pd.read_excel(cfg["datasets"]["material_data"])
+        survey = pd.read_excel(cfg["datasets"]["survey_data"])
+    except Exception as e:
+        raise ValueError(f"Error reading datasets: {e}")
 
+    # Return separately + merged
+    df_material = material.dropna()
+    df_survey = survey.dropna()
+
+    # Align columns if possible
+    common_cols = list(set(df_material.columns).intersection(set(df_survey.columns)))
+    df_combined = pd.concat([df_material[common_cols], df_survey[common_cols]], ignore_index=True)
+
+    return df_material, df_survey, df_combined
+
+# -------------------------------
+# Feature / Target Detection
+# -------------------------------
 def detect_features_and_target(df, cfg):
     features = cfg["ml"]["features"]
     target = cfg["ml"]["target"]
@@ -24,6 +44,9 @@ def detect_features_and_target(df, cfg):
         return None, None
     return features, target
 
+# -------------------------------
+# Training
+# -------------------------------
 def train_model(df, features, target, cfg):
     X = df[features]
     y = df[target]
@@ -35,11 +58,12 @@ def train_model(df, features, target, cfg):
         X_scaled, y, test_size=0.2, random_state=42
     )
 
-    model = RandomForestRegressor(n_estimators=cfg["ml"]["n_estimators"], random_state=42)
+    model = RandomForestRegressor(
+        n_estimators=cfg["ml"]["n_estimators"], random_state=42
+    )
     model.fit(X_train, y_train)
 
-    df_clean = df.copy()
-    return model, scaler, X_test, y_test, df_clean
+    return model, scaler, X_test, y_test, df
 
 def evaluate_model(model, X_test, y_test):
     y_pred = model.predict(X_test)
@@ -47,7 +71,3 @@ def evaluate_model(model, X_test, y_test):
         "r2": round(r2_score(y_test, y_pred), 3),
         "rmse": round(np.sqrt(mean_squared_error(y_test, y_pred)), 3),
     }
-
-def save_model(model, scaler, path_model="models/fabric_model.pkl", path_scaler="models/scaler.pkl"):
-    joblib.dump(model, path_model)
-    joblib.dump(scaler, path_scaler)
