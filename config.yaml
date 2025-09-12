@@ -2,23 +2,11 @@ app:
   title: "Fabric Comfort AI Recommender"
   theme_color: "#2563EB"
 
-data:
-  paths:
-    - "https://github.com/Volandofernando/Material-Literature-data-/raw/main/Dataset.xlsx"
-    - "https://github.com/Volandofernando/REAL-TIME-Dataset/raw/main/IT%20Innovation%20in%20Fabric%20Industry%20%20(Responses).xlsx"
-  target: "comfort_score"
-  features:
-    - absorption_rate
-    - drying_time
-    - thermal_conductivity
-    - air_permeability
-    - gsm
-    - price
-    - sustainability_score
+datasets:
+  material_data: "https://github.com/Volandofernando/Material-Literature-data-/raw/main/Dataset.xlsx"
+  survey_data: "https://github.com/Volandofernando/REAL-TIME-Dataset/raw/main/IT%20Innovation%20in%20Fabric%20Industry%20%20(Responses).xlsx"
 
-model:
-  test_size: 0.2
-  random_state: 42
-  params:
-    n_estimators: 250
-    max_depth: 12
+ml:
+  features: ["Thermal_Resistance", "Air_Permeability", "Moisture_Regain", "Thickness"]
+  target: "Comfort_Score"
+  n_estimators: 200
