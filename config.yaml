@@ -1,10 +1,10 @@
 app:
-  title: "Fabric Comfort Recommender"
+  title: "Fabric Comfort AI Recommender"
   theme_color: "#2563EB"
 
 data:
-  dataset1: "data/Dataset.xlsx"
-  dataset2: "data/IT Innovation in Fabric Industry.xlsx"
+  dataset1: "https://raw.githubusercontent.com/Volandofernando/Material-Literature-data-/main/Dataset.xlsx"
+  dataset2: "https://raw.githubusercontent.com/Volandofernando/REAL-TIME-Dataset/main/IT%20Innovation%20in%20Fabric%20Industry%20%20(Responses).xlsx"
 
 ml:
   features: ["Thermal_Resistance", "Air_Permeability", "Moisture_Regain", "Thickness"]
