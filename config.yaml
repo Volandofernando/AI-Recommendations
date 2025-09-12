@@ -2,10 +2,10 @@ app:
   title: "Fabric Comfort AI Recommender"
   theme_color: "#2563EB"
 
-data:
-  dataset1: "https://raw.githubusercontent.com/Volandofernando/Material-Literature-data-/main/Dataset.xlsx"
-  dataset2: "https://raw.githubusercontent.com/Volandofernando/REAL-TIME-Dataset/main/IT%20Innovation%20in%20Fabric%20Industry%20%20(Responses).xlsx"
-
+datasets:
+  material_data: "https://github.com/Volandofernando/Material-Literature-data-/raw/main/Dataset.xlsx"
+  survey_data: "https://github.com/Volandofernando/REAL-TIME-Dataset/raw/main/IT%20Innovation%20in%20Fabric%20Industry%20%20(Responses).xlsx"
+  
 ml:
   features: ["Thermal_Resistance", "Air_Permeability", "Moisture_Regain", "Thickness"]
   target: "Comfort_Score"
